@@ -7,11 +7,158 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Schema base - lo espanderemo dopo
+// ========== AUTH MODELS ==========
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
+  passwordHash  String?   @map("password_hash")
   name          String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  roleId        String    @map("role_id")
+  role          Role      @relation(fields: [roleId], references: [id])
+  isActive      Boolean   @default(true) @map("is_active")
+  emailVerified DateTime? @map("email_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLogin     DateTime? @map("last_login")
+  
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  permissions Json     @default("{}")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  users       User[]
+  
+  @@map("roles")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@map("sessions")
+}
+
+// ========== GENOMIC DATA MODELS ==========
+model Gene {
+  id            String   @id @default(uuid())
+  geneId        String   @unique @map("gene_id") // HGNC ID
+  symbol        String
+  name          String
+  chromosome    String?
+  startPosition BigInt?  @map("start_position")
+  endPosition   BigInt?  @map("end_position")
+  strand        String?  @db.Char(1) // + or -
+  biotype       String?
+  description   String?  @db.Text
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  aliases       GeneAlias[]
+  variants      Variant[]
+  
+  @@index([symbol])
+  @@index([chromosome])
+  @@map("genes")
+}
+
+model GeneAlias {
+  id        String   @id @default(uuid())
+  geneId    String   @map("gene_id")
+  gene      Gene     @relation(fields: [geneId], references: [id], onDelete: Cascade)
+  alias     String
+  aliasType String?  @map("alias_type") // previous_symbol, synonym, etc
+  source    String?
+  
+  @@map("gene_aliases")
+}
+
+model Variant {
+  id                   String       @id @default(uuid())
+  variantId            String       @unique @map("variant_id") // rs ID or custom
+  geneId               String       @map("gene_id")
+  gene                 Gene         @relation(fields: [geneId], references: [id])
+  chromosome           String
+  position             BigInt
+  referenceAllele      String       @map("reference_allele")
+  alternateAllele      String       @map("alternate_allele")
+  variantType          String?      @map("variant_type") // SNP, INDEL, etc
+  consequence          String?
+  impact               String?      // HIGH, MODERATE, LOW, MODIFIER
+  proteinChange        String?      @map("protein_change")
+  transcriptId         String?      @map("transcript_id")
+  frequency            Decimal?     @db.Decimal(5, 4)
+  clinicalSignificance String?      @map("clinical_significance")
+  metadata             Json         @default("{}")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+  
+  annotations          Annotation[]
+  
+  @@index([geneId])
+  @@index([chromosome, position])
+  @@index([clinicalSignificance])
+  @@map("variants")
+}
+
+model Source {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  version     String?
+  url         String?
+  description String?      @db.Text
+  lastUpdated DateTime?    @map("last_updated")
+  isActive    Boolean      @default(true) @map("is_active")
+  
+  annotations Annotation[]
+  
+  @@map("sources")
+}
+
+model Annotation {
+  id              String   @id @default(uuid())
+  variantId       String   @map("variant_id")
+  variant         Variant  @relation(fields: [variantId], references: [id])
+  sourceId        String   @map("source_id")
+  source          Source   @relation(fields: [sourceId], references: [id])
+  annotationType  String?  @map("annotation_type") // clinical, functional, population
+  content         Json
+  confidenceScore Decimal? @map("confidence_score") @db.Decimal(3, 2)
+  evidenceLevel   String?  @map("evidence_level")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@index([variantId])
+  @@map("annotations")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entityType String  @map("entity_type")
+  entityId  String   @map("entity_id")
+  changes   Json?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
 }

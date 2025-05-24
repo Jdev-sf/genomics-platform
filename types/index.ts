@@ -1,25 +1,64 @@
-// User types
-export interface User {
+// Re-export Prisma types
+export type { User, Role, Gene, Variant, Annotation, Source } from '@prisma/client';
+
+// Custom types for auth
+export interface SessionUser {
   id: string;
   email: string;
   name?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  role: {
+    id: string;
+    name: string;
+    permissions: Record<string, string[]>;
+  };
 }
 
-// Gene types (per dopo)
-export interface Gene {
-  id: string;
-  symbol: string;
-  name: string;
+// Search and filter types
+export interface GeneSearchParams {
+  search?: string;
   chromosome?: string;
+  page?: number;
+  limit?: number;
 }
 
-// Variant types (per dopo)
-export interface Variant {
-  id: string;
-  name: string;
-  geneId: string;
-  position: number;
+export interface VariantSearchParams {
+  geneId?: string;
+  chromosome?: string;
   clinicalSignificance?: string;
+  minFrequency?: number;
+  maxFrequency?: number;
+  page?: number;
+  limit?: number;
 }
+
+// API response types
+export interface ApiResponse<T> {
+  data: T;
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+// Clinical significance enum
+export const ClinicalSignificance = {
+  PATHOGENIC: 'Pathogenic',
+  LIKELY_PATHOGENIC: 'Likely pathogenic',
+  UNCERTAIN: 'Uncertain significance',
+  LIKELY_BENIGN: 'Likely benign',
+  BENIGN: 'Benign',
+} as const;
+
+export type ClinicalSignificanceType = typeof ClinicalSignificance[keyof typeof ClinicalSignificance];
+
+// Variant impact levels
+export const VariantImpact = {
+  HIGH: 'HIGH',
+  MODERATE: 'MODERATE',
+  LOW: 'LOW',
+  MODIFIER: 'MODIFIER',
+} as const;
+
+export type VariantImpactType = typeof VariantImpact[keyof typeof VariantImpact];
