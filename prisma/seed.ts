@@ -120,12 +120,14 @@ async function main() {
     },
   ];
 
+  const createdGenes = [];
   for (const gene of genes) {
-    await prisma.gene.upsert({
+    const created = await prisma.gene.upsert({
       where: { geneId: gene.geneId },
       update: {},
       create: gene,
     });
+    createdGenes.push(created);
   }
 
   console.log('✅ Sample genes created');
@@ -148,15 +150,89 @@ async function main() {
     },
   ];
 
+  const createdSources = [];
   for (const source of sources) {
-    await prisma.source.upsert({
+    const created = await prisma.source.upsert({
       where: { name: source.name },
       update: {},
       create: source,
     });
+    createdSources.push(created);
   }
 
   console.log('✅ Annotation sources created');
+
+  // Create variants for each gene
+  console.log('Creating variants...');
+  
+  const clinicalSignificances = [
+    'Pathogenic',
+    'Likely pathogenic',
+    'Uncertain significance',
+    'Likely benign',
+    'Benign',
+    null
+  ];
+  
+  const variantTypes = ['SNV', 'INDEL', 'DEL', 'INS'];
+  const consequences = ['missense_variant', 'nonsense_variant', 'frameshift_variant', 'splice_variant', 'synonymous_variant'];
+  const impacts = ['HIGH', 'MODERATE', 'LOW', 'MODIFIER'];
+  
+  for (const gene of createdGenes) {
+    // Create 15-25 variants per gene
+    const variantCount = Math.floor(Math.random() * 10) + 15;
+    
+    for (let i = 0; i < variantCount; i++) {
+      const position = gene.startPosition 
+        ? Number(gene.startPosition) + Math.floor(Math.random() * 1000)
+        : Math.floor(Math.random() * 1000000);
+      
+      // Check if variant already exists
+      const existingVariant = await prisma.variant.findUnique({
+        where: { variantId: `${gene.symbol}_var_${i + 1}` }
+      });
+
+      if (!existingVariant) {
+        const variant = await prisma.variant.create({
+          data: {
+            variantId: `${gene.symbol}_var_${i + 1}`,
+            geneId: gene.id,
+            chromosome: gene.chromosome || '1',
+            position: BigInt(position),
+            referenceAllele: ['A', 'T', 'G', 'C'][Math.floor(Math.random() * 4)],
+            alternateAllele: ['A', 'T', 'G', 'C'][Math.floor(Math.random() * 4)],
+            variantType: variantTypes[Math.floor(Math.random() * variantTypes.length)],
+            consequence: consequences[Math.floor(Math.random() * consequences.length)],
+            impact: impacts[Math.floor(Math.random() * impacts.length)],
+            proteinChange: Math.random() > 0.5 ? `p.Arg${Math.floor(Math.random() * 500) + 1}Cys` : null,
+            frequency: Math.random() > 0.7 ? Math.random() * 0.1 : null,
+            clinicalSignificance: clinicalSignificances[Math.floor(Math.random() * clinicalSignificances.length)],
+            metadata: {}
+          }
+        });
+        
+        // Add annotation for some variants
+        if (Math.random() > 0.5 && createdSources.length > 0) {
+          await prisma.annotation.create({
+            data: {
+              variantId: variant.id,
+              sourceId: createdSources[0].id,
+              annotationType: 'clinical',
+              content: {
+                interpretation: variant.clinicalSignificance || 'Not provided',
+                evidence: ['PVS1', 'PM2', 'PP5'].slice(0, Math.floor(Math.random() * 3) + 1),
+                reviewStatus: 'criteria provided'
+              },
+              confidenceScore: 0.5 + Math.random() * 0.5,
+              evidenceLevel: ['Strong', 'Moderate', 'Limited'][Math.floor(Math.random() * 3)]
+            }
+          });
+        }
+      }
+    }
+  }
+  
+  console.log('✅ Variants created');
 }
 
 main()
