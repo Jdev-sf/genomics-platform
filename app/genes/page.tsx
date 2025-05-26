@@ -151,15 +151,36 @@ export default function GenesPage() {
   const handleExport = async () => {
     try {
       const params = new URLSearchParams();
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      if (chromosome && chromosome !== 'all') params.set('chromosome', chromosome);
+      params.set('type', 'genes');
       params.set('format', 'csv');
+      
+      if (debouncedSearch || chromosome !== 'all') {
+        const filters: any = {};
+        if (debouncedSearch) filters.search = debouncedSearch;
+        if (chromosome !== 'all') filters.chromosome = chromosome;
+        params.set('filters', JSON.stringify(filters));
+      }
 
-      // TODO: Implementare export endpoint
-      toast({
-        title: 'Export Started',
-        description: 'Your export will be ready shortly.',
-      });
+      const response = await fetch(`/api/export?${params.toString()}`);
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `genes_export_${Date.now()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        toast({
+          title: 'Export Successful',
+          description: 'Your gene data has been exported.',
+        });
+      } else {
+        throw new Error('Export failed');
+      }
     } catch (error) {
       toast({
         title: 'Export Failed',

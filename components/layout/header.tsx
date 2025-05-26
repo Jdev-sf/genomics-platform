@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { Database } from 'lucide-react';
+import { Database, Upload } from 'lucide-react';
+import { GlobalSearch } from '@/components/global-search';
 
 export function Header() {
   return (
@@ -10,13 +11,20 @@ export function Header() {
             <Database className="h-6 w-6" />
             <span className="text-xl font-semibold">Genomics Platform</span>
           </Link>
-          <div className="flex items-center space-x-4">
-            <Link href="/genes" className="hover:text-primary">
-              Genes
-            </Link>
-            <Link href="/variants" className="hover:text-primary">
-              Variants
-            </Link>
+          <div className="flex items-center space-x-6">
+            <GlobalSearch />
+            <div className="flex items-center space-x-4">
+              <Link href="/genes" className="hover:text-primary">
+                Genes
+              </Link>
+              <Link href="/variants" className="hover:text-primary">
+                Variants
+              </Link>
+              <Link href="/import" className="hover:text-primary flex items-center space-x-1">
+                <Upload size={16} />
+                <span>Import</span>
+              </Link>
+            </div>
           </div>
         </nav>
       </div>
