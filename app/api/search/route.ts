@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
-import { z } from 'zod';
-
-const searchSchema = z.object({
-  query: z.string().min(2),
-  types: z.array(z.enum(['genes', 'variants', 'annotations'])).optional(),
-  limit: z.string().optional().default('10'),
-});
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,113 +9,104 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const queryResult = searchSchema.safeParse({
-      query: searchParams.get('query') || '',
-      types: searchParams.get('types')?.split(',') || ['genes', 'variants'],
-      limit: searchParams.get('limit') || undefined,
-    });
+    const query = searchParams.get('query') || '';
+    const limit = parseInt(searchParams.get('limit') || '10');
 
-    if (!queryResult.success) {
-      return NextResponse.json(
-        { error: 'Invalid search parameters', details: queryResult.error.errors },
-        { status: 400 }
-      );
+    if (!query || query.length < 2) {
+      return NextResponse.json({
+        query,
+        total: 0,
+        results: {
+          genes: [],
+          variants: []
+        }
+      });
     }
 
-    const { query, types, limit } = queryResult.data;
-    const limitNum = parseInt(limit);
+    // Mock data per demo - sostituire con vera query al database
+    const mockGenes = [
+      {
+        id: 'gene1',
+        symbol: 'BRCA1',
+        name: 'Breast cancer type 1 susceptibility protein',
+        chromosome: '17',
+        variant_count: 2453
+      },
+      {
+        id: 'gene2',
+        symbol: 'BRCA2',
+        name: 'Breast cancer type 2 susceptibility protein',
+        chromosome: '13',
+        variant_count: 3122
+      },
+      {
+        id: 'gene3',
+        symbol: 'TP53',
+        name: 'Tumor protein p53',
+        chromosome: '17',
+        variant_count: 1876
+      },
+      {
+        id: 'gene4',
+        symbol: 'EGFR',
+        name: 'Epidermal growth factor receptor',
+        chromosome: '7',
+        variant_count: 921
+      }
+    ];
 
-    const results: any = {
-      genes: [],
-      variants: [],
-      annotations: [],
+    const mockVariants = [
+      {
+        id: 'var1',
+        variant_id: 'rs80357906',
+        gene_symbol: 'BRCA1',
+        position: '43051117',
+        clinical_significance: 'Pathogenic'
+      },
+      {
+        id: 'var2',
+        variant_id: 'rs80357914',
+        gene_symbol: 'BRCA2',
+        position: '32339333',
+        clinical_significance: 'Likely Pathogenic'
+      },
+      {
+        id: 'var3',
+        variant_id: 'rs121913343',
+        gene_symbol: 'TP53',
+        position: '7676040',
+        clinical_significance: 'Pathogenic'
+      }
+    ];
+
+    // Filtro basato sulla query
+    const queryLower = query.toLowerCase();
+    
+    const filteredGenes = mockGenes.filter(gene => 
+      gene.symbol.toLowerCase().includes(queryLower) ||
+      gene.name.toLowerCase().includes(queryLower)
+    ).slice(0, Math.floor(limit / 2));
+
+    const filteredVariants = mockVariants.filter(variant =>
+      variant.variant_id.toLowerCase().includes(queryLower) ||
+      variant.gene_symbol.toLowerCase().includes(queryLower)
+    ).slice(0, Math.floor(limit / 2));
+
+    const results = {
+      query,
+      total: filteredGenes.length + filteredVariants.length,
+      results: {
+        genes: filteredGenes,
+        variants: filteredVariants
+      }
     };
 
-    // Search genes
-    if (types?.includes('genes')) {
-      const genes = await prisma.gene.findMany({
-        where: {
-          OR: [
-            { symbol: { contains: query, mode: 'insensitive' } },
-            { name: { contains: query, mode: 'insensitive' } },
-            { geneId: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
-          ],
-        },
-        select: {
-          id: true,
-          geneId: true,
-          symbol: true,
-          name: true,
-          chromosome: true,
-          _count: {
-            select: { variants: true },
-          },
-        },
-        take: limitNum,
-      });
+    return NextResponse.json(results);
 
-      results.genes = genes.map((gene: any) => ({
-        id: gene.id,
-        gene_id: gene.geneId,
-        symbol: gene.symbol,
-        name: gene.name,
-        chromosome: gene.chromosome,
-        variant_count: gene._count.variants,
-        type: 'gene',
-      }));
-    }
-
-    // Search variants
-    if (types?.includes('variants')) {
-      const variants = await prisma.variant.findMany({
-        where: {
-          OR: [
-            { variantId: { contains: query, mode: 'insensitive' } },
-            { proteinChange: { contains: query, mode: 'insensitive' } },
-            { gene: { symbol: { contains: query, mode: 'insensitive' } } },
-          ],
-        },
-        include: {
-          gene: {
-            select: {
-              symbol: true,
-              name: true,
-            },
-          },
-        },
-        take: limitNum,
-      });
-
-      results.variants = variants.map((variant: any) => ({
-        id: variant.id,
-        variant_id: variant.variantId,
-        gene_symbol: variant.gene.symbol,
-        gene_name: variant.gene.name,
-        chromosome: variant.chromosome,
-        position: variant.position.toString(),
-        change: `${variant.referenceAllele}>${variant.alternateAllele}`,
-        protein_change: variant.proteinChange,
-        clinical_significance: variant.clinicalSignificance,
-        type: 'variant',
-      }));
-    }
-
-    // Calculate total results
-    const totalResults = results.genes.length + results.variants.length;
-
-    return NextResponse.json({
-      status: 'success',
-      data: {
-        query,
-        total: totalResults,
-        results,
-      },
-    });
   } catch (error) {
-    console.error('Search error:', error);
+    console.error('Search API error:', error);
     return NextResponse.json(
-      { error: 'Search failed' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

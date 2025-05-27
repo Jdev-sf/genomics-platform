@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input';
 import { useTheme } from '@/components/theme-provider';
 import { GlobalSearch } from '@/components/global-search';
 import { useDebounce } from '@/hooks/use-debounce';
+import { signOut } from 'next-auth/react';
 
 interface SearchResult {
   id: string;
@@ -66,7 +67,7 @@ export function ModernHeader() {
         
         const searchResults: SearchResult[] = [
           ...data.results.genes.map((gene: any) => ({
-            id: gene.id,
+            id: `gene-${gene.id}`,
             type: 'gene' as const,
             title: gene.symbol,
             subtitle: gene.name,
@@ -74,7 +75,7 @@ export function ModernHeader() {
             badge: `Chr ${gene.chromosome}`,
           })),
           ...data.results.variants.map((variant: any) => ({
-            id: variant.id,
+            id: `variant-${variant.id}`,
             type: 'variant' as const,
             title: variant.variant_id,
             subtitle: variant.gene_symbol,
@@ -100,7 +101,9 @@ export function ModernHeader() {
   }, [debouncedQuery, mobileSearchOpen]);
 
   const handleResultClick = (result: SearchResult) => {
-    const path = result.type === 'gene' ? `/genes/${result.id}` : `/variants/${result.id}`;
+    // Estrai l'ID originale rimuovendo il prefisso
+    const originalId = result.id.replace(/^(gene|variant)-/, '');
+    const path = result.type === 'gene' ? `/genes/${originalId}` : `/variants/${originalId}`;
     router.push(path);
     setMobileSearchOpen(false);
     setQuery('');
@@ -241,20 +244,36 @@ export function ModernHeader() {
                     </Badge>
                   </div>
                   <div className="p-1">
-                    <Button variant="ghost" className="w-full justify-start">
+                    <Button 
+                      variant="ghost" 
+                      className="w-full justify-start"
+                      onClick={() => router.push('/profile')}
+                    >
                       <User className="mr-2 h-4 w-4" />
                       Profile
                     </Button>
-                    <Button variant="ghost" className="w-full justify-start">
+                    <Button 
+                      variant="ghost" 
+                      className="w-full justify-start"
+                      onClick={() => router.push('/settings')}
+                    >
                       <Settings className="mr-2 h-4 w-4" />
                       Settings
                     </Button>
-                    <Button variant="ghost" className="w-full justify-start">
+                    <Button 
+                      variant="ghost" 
+                      className="w-full justify-start"
+                      onClick={() => router.push('/documentation')}
+                    >
                       <FileText className="mr-2 h-4 w-4" />
                       Documentation
                     </Button>
                     <div className="my-1 h-px bg-border"></div>
-                    <Button variant="ghost" className="w-full justify-start text-red-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950">
+                    <Button 
+                      variant="ghost" 
+                      className="w-full justify-start text-red-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                      onClick={() => signOut({ callbackUrl: '/auth/login' })}
+                    >
                       <LogOut className="mr-2 h-4 w-4" />
                       Sign out
                     </Button>
@@ -293,8 +312,8 @@ export function ModernHeader() {
 
       {/* Mobile Search Modal */}
       {mobileSearchOpen && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm md:hidden">
-          <div className="fixed inset-x-0 top-0 bg-background border-b">
+        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm md:hidden">
+          <div className="fixed inset-x-0 top-0 bg-background border-b z-[101]">
             <div className="flex items-center p-4 space-x-3">
               <Search className="h-5 w-5 text-muted-foreground" />
               <Input

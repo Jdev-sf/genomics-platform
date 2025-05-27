@@ -66,7 +66,7 @@ export function GlobalSearch() {
       
       const searchResults: SearchResult[] = [
         ...data.results.genes.map(gene => ({
-          id: gene.id,
+          id: `gene-${gene.id}`,
           type: 'gene' as const,
           title: gene.symbol,
           subtitle: gene.name,
@@ -74,7 +74,7 @@ export function GlobalSearch() {
           badge: `Chr ${gene.chromosome}`,
         })),
         ...data.results.variants.map(variant => ({
-          id: variant.id,
+          id: `variant-${variant.id}`,
           type: 'variant' as const,
           title: variant.variant_id,
           subtitle: variant.gene_symbol,
@@ -149,7 +149,9 @@ export function GlobalSearch() {
   }, [isOpen]);
 
   const handleResultClick = (result: SearchResult) => {
-    const path = result.type === 'gene' ? `/genes/${result.id}` : `/variants/${result.id}`;
+    // Estrai l'ID originale rimuovendo il prefisso
+    const originalId = result.id.replace(/^(gene|variant)-/, '');
+    const path = result.type === 'gene' ? `/genes/${originalId}` : `/variants/${originalId}`;
     router.push(path);
     setIsOpen(false);
     setQuery('');
@@ -178,8 +180,8 @@ export function GlobalSearch() {
 
         {/* Desktop Search Modal */}
         {isOpen && (
-          <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
-            <div className="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]">
+          <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm">
+            <div className="fixed left-[50%] top-[50%] z-[101] w-full max-w-lg translate-x-[-50%] translate-y-[-50%]">
               <div ref={resultsRef} className="bg-background border rounded-lg shadow-lg">
                 <div className="flex items-center border-b px-3">
                   <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
