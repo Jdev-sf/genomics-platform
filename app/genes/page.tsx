@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Database, Search, Filter, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
+import { LazyTable } from '@/components/lazy-table';
 
 interface Gene {
   id: string;
@@ -68,6 +69,22 @@ export default function GenesPage() {
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
 
   const debouncedSearch = useDebounce(search, 500);
+
+  // Memoized sort handler
+  const handleSort = useCallback((field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+    setPage(1);
+  }, [sortBy, sortOrder]);
+
+  // Memoized gene click handler
+  const handleGeneClick = useCallback((geneId: string) => {
+    router.push(`/genes/${geneId}`);
+  }, [router]);
 
   // Funzione per aggiornare URL con parametri
   const updateUrlParams = useCallback((params: Record<string, string>) => {
@@ -133,20 +150,7 @@ export default function GenesPage() {
     });
   }, [debouncedSearch, chromosome, sortBy, sortOrder, page, updateUrlParams]);
 
-  // Handlers
-  const handleGeneClick = (geneId: string) => {
-    router.push(`/genes/${geneId}`);
-  };
-
-  const handleSort = (field: string) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortOrder('asc');
-    }
-    setPage(1);
-  };
+  // Handlers già definiti sopra, rimuoviamo i duplicati
 
   const handleExport = async () => {
     try {
@@ -292,69 +296,71 @@ export default function GenesPage() {
               <p className="text-muted-foreground">No genes found matching your criteria.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead 
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleSort('symbol')}
-                  >
-                    Symbol
-                    {sortBy === 'symbol' && (
-                      <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Chromosome</TableHead>
-                  <TableHead className="text-right">Variants</TableHead>
-                  <TableHead className="text-right">Pathogenic</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {genes.map((gene) => (
-                  <TableRow 
-                    key={gene.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleGeneClick(gene.id)}
-                  >
-                    <TableCell className="font-medium">
-                      <span className="text-primary hover:underline">
-                        {gene.symbol}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {gene.name}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        Chr {gene.chromosome}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {gene.variant_count.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="text-destructive font-medium">
-                        {gene.pathogenic_count.toLocaleString()}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleGeneClick(gene.id);
-                        }}
-                      >
-                        View Details
-                      </Button>
-                    </TableCell>
+            <LazyTable>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort('symbol')}
+                    >
+                      Symbol
+                      {sortBy === 'symbol' && (
+                        <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Chromosome</TableHead>
+                    <TableHead className="text-right">Variants</TableHead>
+                    <TableHead className="text-right">Pathogenic</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {genes.map((gene) => (
+                    <TableRow 
+                      key={gene.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleGeneClick(gene.id)}
+                    >
+                      <TableCell className="font-medium">
+                        <span className="text-primary hover:underline">
+                          {gene.symbol}
+                        </span>
+                      </TableCell>
+                      <TableCell className="max-w-xs truncate">
+                        {gene.name}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          Chr {gene.chromosome}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {gene.variant_count.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-destructive font-medium">
+                          {gene.pathogenic_count.toLocaleString()}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleGeneClick(gene.id);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </LazyTable>
           )}
         </CardContent>
       </Card>

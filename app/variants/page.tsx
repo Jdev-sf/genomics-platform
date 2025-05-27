@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Activity, Search, Filter, Download, ChevronLeft, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
+import { LazyTable } from '@/components/lazy-table';
 
 interface VariantGene {
   id: string;
@@ -90,6 +91,42 @@ export default function VariantsPage() {
 
   const debouncedSearch = useDebounce(search, 500);
 
+  // Memoized handlers
+  const handleVariantClick = useCallback((variantId: string) => {
+    router.push(`/variants/${variantId}`);
+  }, [router]);
+
+  const handleSort = useCallback((field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+    setPage(1);
+  }, [sortBy, sortOrder]);
+
+  // Memoized badge variant functions
+  const getSignificanceBadgeVariant = useCallback((significance: string | null) => {
+    if (!significance) return 'secondary';
+    const lower = significance.toLowerCase();
+    if (lower.includes('pathogenic')) return 'destructive';
+    if (lower.includes('benign')) return 'default';
+    if (lower.includes('uncertain')) return 'secondary';
+    return 'secondary';
+  }, []);
+
+  const getImpactBadgeVariant = useCallback((impact: string | null) => {
+    if (!impact) return 'secondary';
+    switch (impact.toUpperCase()) {
+      case 'HIGH': return 'destructive';
+      case 'MODERATE': return 'secondary';
+      case 'LOW': return 'secondary';
+      case 'MODIFIER': return 'outline';
+      default: return 'secondary';
+    }
+  }, []);
+
   const updateUrlParams = useCallback((params: Record<string, string>) => {
     const newParams = new URLSearchParams(searchParams.toString());
     
@@ -154,39 +191,7 @@ export default function VariantsPage() {
     });
   }, [debouncedSearch, chromosome, clinicalSignificance, impact, sortBy, sortOrder, page, updateUrlParams]);
 
-  const handleVariantClick = (variantId: string) => {
-    router.push(`/variants/${variantId}`);
-  };
-
-  const handleSort = (field: string) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortOrder('asc');
-    }
-    setPage(1);
-  };
-
-  const getSignificanceBadgeVariant = (significance: string | null) => {
-    if (!significance) return 'secondary';
-    const lower = significance.toLowerCase();
-    if (lower.includes('pathogenic')) return 'destructive';
-    if (lower.includes('benign')) return 'default';
-    if (lower.includes('uncertain')) return 'secondary';
-    return 'secondary';
-  };
-
-  const getImpactBadgeVariant = (impact: string | null) => {
-    if (!impact) return 'secondary';
-    switch (impact.toUpperCase()) {
-      case 'HIGH': return 'destructive';
-      case 'MODERATE': return 'secondary';
-      case 'LOW': return 'secondary';
-      case 'MODIFIER': return 'outline';
-      default: return 'secondary';
-    }
-  };
+  // Remove duplicate handlers (già definiti sopra)
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -301,88 +306,90 @@ export default function VariantsPage() {
               <p className="text-muted-foreground">No variants found matching your criteria.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Variant ID</TableHead>
-                  <TableHead>Gene</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Change</TableHead>
-                  <TableHead>Consequence</TableHead>
-                  <TableHead>Impact</TableHead>
-                  <TableHead>Clinical Significance</TableHead>
-                  <TableHead>Frequency</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {variants.map((variant) => (
-                  <TableRow 
-                    key={variant.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleVariantClick(variant.id)}
-                  >
-                    <TableCell className="font-medium">
-                      <span className="text-primary hover:underline">
-                        {variant.variant_id}
-                      </span>
-                      {variant.protein_change && (
-                        <p className="text-xs text-muted-foreground">{variant.protein_change}</p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <span className="font-medium">{variant.gene.symbol}</span>
-                        <p className="text-xs text-muted-foreground truncate max-w-xs">
-                          {variant.gene.name}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-xs">
-                        Chr{variant.chromosome}:{parseInt(variant.position).toLocaleString()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {variant.reference_allele}&gt;{variant.alternate_allele}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {variant.consequence || '-'}
-                    </TableCell>
-                    <TableCell>
-                      {variant.impact && (
-                        <Badge variant={getImpactBadgeVariant(variant.impact)} className="text-xs">
-                          {variant.impact}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getSignificanceBadgeVariant(variant.clinical_significance)}>
-                        {variant.clinical_significance || 'Not provided'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {variant.frequency ? 
-                        (variant.frequency * 100).toFixed(4) + '%' : 
-                        '-'
-                      }
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleVariantClick(variant.id);
-                        }}
-                      >
-                        View Details
-                      </Button>
-                    </TableCell>
+            <LazyTable>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Variant ID</TableHead>
+                    <TableHead>Gene</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Change</TableHead>
+                    <TableHead>Consequence</TableHead>
+                    <TableHead>Impact</TableHead>
+                    <TableHead>Clinical Significance</TableHead>
+                    <TableHead>Frequency</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {variants.map((variant) => (
+                    <TableRow 
+                      key={variant.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleVariantClick(variant.id)}
+                    >
+                      <TableCell className="font-medium">
+                        <span className="text-primary hover:underline">
+                          {variant.variant_id}
+                        </span>
+                        {variant.protein_change && (
+                          <p className="text-xs text-muted-foreground">{variant.protein_change}</p>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <span className="font-medium">{variant.gene.symbol}</span>
+                          <p className="text-xs text-muted-foreground truncate max-w-xs">
+                            {variant.gene.name}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-xs">
+                          Chr{variant.chromosome}:{parseInt(variant.position).toLocaleString()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {variant.reference_allele}&gt;{variant.alternate_allele}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {variant.consequence || '-'}
+                      </TableCell>
+                      <TableCell>
+                        {variant.impact && (
+                          <Badge variant={getImpactBadgeVariant(variant.impact)} className="text-xs">
+                            {variant.impact}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getSignificanceBadgeVariant(variant.clinical_significance)}>
+                          {variant.clinical_significance || 'Not provided'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {variant.frequency ? 
+                          (variant.frequency * 100).toFixed(4) + '%' : 
+                          '-'
+                        }
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleVariantClick(variant.id);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </LazyTable>
           )}
         </CardContent>
       </Card>
