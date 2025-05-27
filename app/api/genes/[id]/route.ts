@@ -1,3 +1,4 @@
+// app/api/genes/[id]/route.ts - FIX async params
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -8,7 +9,7 @@ const uuidSchema = z.string().uuid();
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verifica autenticazione
@@ -17,57 +18,102 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Validazione ID
-    const idResult = uuidSchema.safeParse(params.id);
-    if (!idResult.success) {
-      return NextResponse.json(
-        { error: 'Invalid gene ID format' },
-        { status: 400 }
-      );
-    }
-
-    // Query gene con dati correlati
-    const gene = await prisma.gene.findUnique({
-      where: { id: params.id },
-      include: {
-        aliases: true,
-        variants: {
-          select: {
-            id: true,
-            variantId: true,
-            position: true,
-            referenceAllele: true,
-            alternateAllele: true,
-            variantType: true,
-            consequence: true,
-            impact: true,
-            proteinChange: true,
-            clinicalSignificance: true,
-            frequency: true,
-            createdAt: true,
-            annotations: {
-              include: {
-                source: true
-              },
-              orderBy: {
-                createdAt: 'desc'
-              },
-              take: 5 // Ultime 5 annotazioni per variante
-            }
+    // FIX: Await params before accessing properties
+    const resolvedParams = await params;
+    let geneId = resolvedParams.id;
+    
+    // Se non è un UUID valido, cerca per symbol per compatibilità
+    const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(geneId);
+    
+    let gene;
+    
+    if (isValidUUID) {
+      // Query per UUID
+      gene = await prisma.gene.findUnique({
+        where: { id: geneId },
+        include: {
+          aliases: true,
+          variants: {
+            select: {
+              id: true,
+              variantId: true,
+              position: true,
+              referenceAllele: true,
+              alternateAllele: true,
+              variantType: true,
+              consequence: true,
+              impact: true,
+              proteinChange: true,
+              clinicalSignificance: true,
+              frequency: true,
+              createdAt: true,
+              annotations: {
+                include: {
+                  source: true
+                },
+                orderBy: {
+                  createdAt: 'desc'
+                },
+                take: 5
+              }
+            },
+            orderBy: [
+              { clinicalSignificance: 'asc' },
+              { position: 'asc' }
+            ],
+            take: 100
           },
-          orderBy: [
-            { clinicalSignificance: 'asc' }, // Pathogenic first
-            { position: 'asc' }
-          ],
-          take: 100 // Limite iniziale di varianti
-        },
-        _count: {
-          select: {
-            variants: true
+          _count: {
+            select: {
+              variants: true
+            }
           }
         }
-      }
-    });
+      });
+    } else {
+      // Query per symbol come fallback
+      gene = await prisma.gene.findFirst({
+        where: { symbol: geneId },
+        include: {
+          aliases: true,
+          variants: {
+            select: {
+              id: true,
+              variantId: true,
+              position: true,
+              referenceAllele: true,
+              alternateAllele: true,
+              variantType: true,
+              consequence: true,
+              impact: true,
+              proteinChange: true,
+              clinicalSignificance: true,
+              frequency: true,
+              createdAt: true,
+              annotations: {
+                include: {
+                  source: true
+                },
+                orderBy: {
+                  createdAt: 'desc'
+                },
+                take: 5
+              }
+            },
+            orderBy: [
+              { clinicalSignificance: 'asc' },
+              { position: 'asc' }
+            ],
+            take: 100
+          },
+          _count: {
+            select: {
+              variants: true
+            }
+          }
+        }
+      });
+    }
 
     if (!gene) {
       return NextResponse.json(
@@ -79,7 +125,7 @@ export async function GET(
     // Conteggio varianti per significato clinico
     const variantStats = await prisma.variant.groupBy({
       by: ['clinicalSignificance'],
-      where: { geneId: params.id },
+      where: { geneId: gene.id },
       _count: true
     });
 
@@ -96,8 +142,14 @@ export async function GET(
 
     variantStats.forEach(stat => {
       const significance = stat.clinicalSignificance?.toLowerCase().replace(/ /g, '_') || 'not_provided';
-      if (significance in stats) {
-        (stats as any)[significance] = stat._count;
+      const key = significance.includes('pathogenic') && significance.includes('likely') ? 'likely_pathogenic' :
+                  significance.includes('pathogenic') ? 'pathogenic' :
+                  significance.includes('benign') && significance.includes('likely') ? 'likely_benign' :
+                  significance.includes('benign') ? 'benign' :
+                  significance.includes('uncertain') ? 'uncertain_significance' : 'not_provided';
+      
+      if (key in stats) {
+        (stats as any)[key] = stat._count;
       }
     });
 
@@ -148,7 +200,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching gene details:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

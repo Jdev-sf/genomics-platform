@@ -1,3 +1,4 @@
+// components/layout/modern-header.tsx - FIX Layout e Z-Index
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -101,7 +102,6 @@ export function ModernHeader() {
   }, [debouncedQuery, mobileSearchOpen]);
 
   const handleResultClick = (result: SearchResult) => {
-    // Estrai l'ID originale rimuovendo il prefisso
     const originalId = result.id.replace(/^(gene|variant)-/, '');
     const path = result.type === 'gene' ? `/genes/${originalId}` : `/variants/${originalId}`;
     router.push(path);
@@ -112,14 +112,16 @@ export function ModernHeader() {
 
   // Close menus when clicking outside
   useEffect(() => {
-    const handleClickOutside = () => {
-      setUserMenuOpen(false);
+    const handleClickOutside = (event: MouseEvent) => {
+      // Check if click is outside user menu
+      const target = event.target as Element;
+      if (userMenuOpen && !target.closest('[data-user-menu]')) {
+        setUserMenuOpen(false);
+      }
     };
     
-    if (userMenuOpen) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
   }, [userMenuOpen]);
 
   const navigation = [
@@ -133,7 +135,8 @@ export function ModernHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* FIX: Header con z-index controllato */}
+      <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between px-4">
           {/* Logo & Brand */}
           <div className="flex items-center space-x-8">
@@ -179,7 +182,7 @@ export function ModernHeader() {
 
           {/* Search & Actions */}
           <div className="flex items-center space-x-4">
-            {/* Global Search */}
+            {/* Global Search - FIX: Rimosso z-index conflittuali */}
             <div className="hidden md:block">
               <GlobalSearch />
             </div>
@@ -213,8 +216,8 @@ export function ModernHeader() {
               </Badge>
             </Button>
 
-            {/* User Menu */}
-            <div className="relative">
+            {/* User Menu - FIX: z-index e data attributes */}
+            <div className="relative" data-user-menu>
               <Button
                 variant="ghost"
                 className="flex items-center space-x-2 pl-2 pr-3"
@@ -233,9 +236,9 @@ export function ModernHeader() {
                 <ChevronDown className="h-4 w-4" />
               </Button>
 
-              {/* User Dropdown */}
+              {/* User Dropdown - FIX: z-index specifico per evitare conflitti */}
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border bg-background shadow-lg z-50">
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border bg-background shadow-lg z-50" data-user-menu>
                   <div className="p-3 border-b">
                     <p className="font-medium">{session.user?.name}</p>
                     <p className="text-sm text-muted-foreground">{session.user?.email}</p>
@@ -247,7 +250,10 @@ export function ModernHeader() {
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
-                      onClick={() => router.push('/profile')}
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        router.push('/profile');
+                      }}
                     >
                       <User className="mr-2 h-4 w-4" />
                       Profile
@@ -255,7 +261,10 @@ export function ModernHeader() {
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
-                      onClick={() => router.push('/settings')}
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        router.push('/settings');
+                      }}
                     >
                       <Settings className="mr-2 h-4 w-4" />
                       Settings
@@ -263,7 +272,10 @@ export function ModernHeader() {
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
-                      onClick={() => router.push('/documentation')}
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        router.push('/documentation');
+                      }}
                     >
                       <FileText className="mr-2 h-4 w-4" />
                       Documentation
@@ -285,7 +297,7 @@ export function ModernHeader() {
         </div>
 
         {/* Mobile Navigation */}
-        <div className="md:hidden border-t bg-background/95 backdrop-blur z-40">
+        <div className="md:hidden border-t bg-background/95 backdrop-blur">
           <div className="container px-4 py-2">
             <div className="flex space-x-1">
               {navigation.map((item) => {
@@ -310,87 +322,93 @@ export function ModernHeader() {
         </div>
       </header>
 
-      {/* Mobile Search Modal */}
+      {/* Mobile Search Modal - FIX: Portal con z-index alto */}
       {mobileSearchOpen && (
-        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm md:hidden">
-          <div className="fixed inset-x-0 top-0 bg-background border-b z-[101]">
-            <div className="flex items-center p-4 space-x-3">
-              <Search className="h-5 w-5 text-muted-foreground" />
-              <Input
-                placeholder="Search genes, variants..."
-                className="flex-1 border-0 bg-transparent focus-visible:ring-0"
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <Button 
-                variant="ghost" 
-                size="icon"
-                onClick={() => {
-                  setMobileSearchOpen(false);
-                  setQuery('');
-                  setResults([]);
-                }}
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 z-[9998] bg-black/50 md:hidden" />
+          
+          {/* Modal */}
+          <div className="fixed inset-0 z-[9999] md:hidden">
+            <div className="bg-background border-b">
+              <div className="flex items-center p-4 space-x-3">
+                <Search className="h-5 w-5 text-muted-foreground" />
+                <Input
+                  placeholder="Search genes, variants..."
+                  className="flex-1 border-0 bg-transparent focus-visible:ring-0"
+                  autoFocus
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => {
+                    setMobileSearchOpen(false);
+                    setQuery('');
+                    setResults([]);
+                  }}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
 
-            {/* Mobile Search Results */}
-            <div className="max-h-96 overflow-y-auto border-t">
-              {loading ? (
-                <div className="flex items-center justify-center py-6">
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  <span className="text-sm text-muted-foreground">Searching...</span>
-                </div>
-              ) : results.length > 0 ? (
-                <div className="py-2">
-                  {results.map((result) => (
-                    <button
-                      key={result.id}
-                      className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors border-b border-border/50 last:border-0"
-                      onClick={() => handleResultClick(result)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          {result.type === 'gene' ? (
-                            <Database className="h-4 w-4 text-blue-500" />
-                          ) : (
-                            <Activity className="h-4 w-4 text-green-500" />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium truncate">{result.title}</div>
-                            <div className="text-sm text-muted-foreground truncate">
-                              {result.subtitle}
-                            </div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {result.description}
+              {/* Mobile Search Results */}
+              <div className="max-h-96 overflow-y-auto border-t">
+                {loading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span className="text-sm text-muted-foreground">Searching...</span>
+                  </div>
+                ) : results.length > 0 ? (
+                  <div className="py-2">
+                    {results.map((result) => (
+                      <button
+                        key={result.id}
+                        className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors border-b border-border/50 last:border-0"
+                        onClick={() => handleResultClick(result)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            {result.type === 'gene' ? (
+                              <Database className="h-4 w-4 text-blue-500" />
+                            ) : (
+                              <Activity className="h-4 w-4 text-green-500" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium truncate">{result.title}</div>
+                              <div className="text-sm text-muted-foreground truncate">
+                                {result.subtitle}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate">
+                                {result.description}
+                              </div>
                             </div>
                           </div>
+                          {result.badge && (
+                            <Badge variant="outline" className="text-xs">
+                              {result.badge}
+                            </Badge>
+                          )}
                         </div>
-                        {result.badge && (
-                          <Badge variant="outline" className="text-xs">
-                            {result.badge}
-                          </Badge>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : query ? (
-                <div className="py-6 text-center text-sm text-muted-foreground">
-                  No results found for "{query}"
-                </div>
-              ) : (
-                <div className="px-4 pb-4">
-                  <p className="text-sm text-muted-foreground">
-                    Start typing to search for genes or variants...
-                  </p>
-                </div>
-              )}
+                      </button>
+                    ))}
+                  </div>
+                ) : query ? (
+                  <div className="py-6 text-center text-sm text-muted-foreground">
+                    No results found for "{query}"
+                  </div>
+                ) : (
+                  <div className="px-4 pb-4">
+                    <p className="text-sm text-muted-foreground">
+                      Start typing to search for genes or variants...
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );

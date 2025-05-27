@@ -1,3 +1,4 @@
+// app/api/variants/[id]/route.ts - FIX async params e implementazione completa
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -7,7 +8,7 @@ const uuidSchema = z.string().uuid();
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -15,37 +16,66 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const idResult = uuidSchema.safeParse(params.id);
-    if (!idResult.success) {
-      return NextResponse.json(
-        { error: 'Invalid variant ID format' },
-        { status: 400 }
-      );
-    }
+    // FIX: Await params before accessing properties
+    const resolvedParams = await params;
+    const variantId = resolvedParams.id;
 
-    const variant = await prisma.variant.findUnique({
-      where: { id: params.id },
-      include: {
-        gene: {
-          select: {
-            id: true,
-            geneId: true,
-            symbol: true,
-            name: true,
-            chromosome: true,
-            description: true,
-          }
-        },
-        annotations: {
-          include: {
-            source: true
+    // Validazione ID - accetta sia UUID che variant_id
+    const isValidUUID = uuidSchema.safeParse(variantId).success;
+    
+    let variant;
+    
+    if (isValidUUID) {
+      // Query per UUID
+      variant = await prisma.variant.findUnique({
+        where: { id: variantId },
+        include: {
+          gene: {
+            select: {
+              id: true,
+              geneId: true,
+              symbol: true,
+              name: true,
+              chromosome: true,
+              description: true,
+            }
           },
-          orderBy: {
-            createdAt: 'desc'
+          annotations: {
+            include: {
+              source: true
+            },
+            orderBy: {
+              createdAt: 'desc'
+            }
           }
         }
-      }
-    });
+      });
+    } else {
+      // Query per variant_id come fallback
+      variant = await prisma.variant.findFirst({
+        where: { variantId: variantId },
+        include: {
+          gene: {
+            select: {
+              id: true,
+              geneId: true,
+              symbol: true,
+              name: true,
+              chromosome: true,
+              description: true,
+            }
+          },
+          annotations: {
+            include: {
+              source: true
+            },
+            orderBy: {
+              createdAt: 'desc'
+            }
+          }
+        }
+      });
+    }
 
     if (!variant) {
       return NextResponse.json(
@@ -131,7 +161,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching variant details:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
