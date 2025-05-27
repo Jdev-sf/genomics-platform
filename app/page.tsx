@@ -1,14 +1,32 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Database, Activity, AlertCircle, CheckCircle, TrendingUp, Users } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
+import { useRouter } from 'next/navigation';
+import { 
+  Database, 
+  Activity, 
+  AlertCircle, 
+  CheckCircle, 
+  Search,
+  Upload,
+  BarChart3,
+  FileText,
+  Brain,
+  Zap,
+  AlertTriangle
+} from 'lucide-react';
+import { ModernHeader } from '@/components/layout/modern-header';
+import { 
+  StatCard, 
+  QuickActionCard, 
+  ActivityFeedCard, 
+  ProgressCard 
+} from '@/components/dashboard/enhanced-cards';
 import {
-  BarChart,
-  Bar,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   PieChart,
   Pie,
   Cell,
@@ -30,9 +48,8 @@ interface DashboardStats {
   recentActivity: Array<{ date: string; imports: number; exports: number }>;
 }
 
-import { MainLayout } from '@/components/layout/main-layout';
-
 export default function HomePage() {
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -42,8 +59,7 @@ export default function HomePage() {
 
   const fetchDashboardData = async () => {
     try {
-      // In produzione, questo verrebbe da un endpoint API dedicato
-      // Per ora usiamo dati mock realistici
+      // Mock data for demo - replace with real API call
       const mockStats: DashboardStats = {
         totalGenes: 20453,
         totalVariants: 1234567,
@@ -55,11 +71,6 @@ export default function HomePage() {
           { chromosome: '3', count: 76234 },
           { chromosome: '4', count: 65123 },
           { chromosome: '5', count: 58234 },
-          { chromosome: '6', count: 54123 },
-          { chromosome: '7', count: 52234 },
-          { chromosome: '8', count: 48123 },
-          { chromosome: '9', count: 45234 },
-          { chromosome: '10', count: 42123 },
         ],
         variantsByClinicalSignificance: [
           { name: 'Pathogenic', value: 45234 },
@@ -74,8 +85,6 @@ export default function HomePage() {
           { date: 'Wed', imports: 38, exports: 32 },
           { date: 'Thu', imports: 65, exports: 45 },
           { date: 'Fri', imports: 72, exports: 52 },
-          { date: 'Sat', imports: 28, exports: 18 },
-          { date: 'Sun', imports: 15, exports: 12 },
         ],
       };
       setStats(mockStats);
@@ -88,13 +97,47 @@ export default function HomePage() {
 
   const COLORS = ['#ef4444', '#f97316', '#6b7280', '#22c55e', '#10b981'];
 
+  const quickActions = [
+    {
+      title: 'Search Genes',
+      description: 'Find genes by symbol, name, or genomic location',
+      icon: Search,
+      color: 'blue' as const,
+      action: () => router.push('/genes')
+    },
+    {
+      title: 'Analyze Variants',
+      description: 'Explore genetic variants and their clinical significance',
+      icon: Activity,
+      color: 'green' as const,
+      action: () => router.push('/variants')
+    },
+    {
+      title: 'Import Data',
+      description: 'Upload new genomic datasets for analysis',
+      icon: Upload,
+      color: 'purple' as const,
+      action: () => router.push('/import')
+    },
+    {
+      title: 'AI Insights',
+      description: 'Get AI-powered predictions and literature suggestions',
+      icon: Brain,
+      color: 'orange' as const,
+      action: () => router.push('/genes')
+    }
+  ];
+
   if (loading) {
     return (
-      <div className="container mx-auto py-6">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4 animate-pulse" />
-            <p className="text-muted-foreground">Loading dashboard...</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+        <ModernHeader />
+        <div className="container mx-auto py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading dashboard...</p>
+            </div>
           </div>
         </div>
       </div>
@@ -102,177 +145,198 @@ export default function HomePage() {
   }
 
   return (
-    <MainLayout>
-      <div className="container mx-auto py-6 space-y-8">
-      <div>
-        <h1 className="text-4xl font-bold">Genomics Platform Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Real-time insights into your genomic data
-        </p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+      <ModernHeader />
+      
+      <main className="container mx-auto py-8 px-4 space-y-8">
+        {/* Welcome Section */}
+        <div className="text-center space-y-4">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-600 dark:from-white dark:via-gray-200 dark:to-gray-400 bg-clip-text text-transparent">
+            Genomics Platform Dashboard
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            AI-powered genomic analysis and visualization platform for researchers and clinicians
+          </p>
+        </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Genes</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalGenes.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              <TrendingUp className="inline h-3 w-3 mr-1 text-green-500" />
-              +12% from last month
-            </p>
-          </CardContent>
-        </Card>
+        {/* Stats Cards */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Total Genes"
+            value={stats?.totalGenes || 0}
+            change={12}
+            changeLabel="from last month"
+            icon={Database}
+            color="blue"
+            subtitle="Human genome reference"
+          />
+          <StatCard
+            title="Total Variants"
+            value={stats?.totalVariants || 0}
+            change={8}
+            changeLabel="from last month"
+            icon={Activity}
+            color="green"
+            subtitle="Catalogued variations"
+          />
+          <StatCard
+            title="Pathogenic Variants"
+            value={stats?.pathogenicVariants || 0}
+            change={-2}
+            changeLabel="from last month"
+            icon={AlertTriangle}
+            color="red"
+            subtitle="Clinical significance"
+          />
+          <StatCard
+            title="AI Annotations"
+            value={stats?.totalAnnotations || 0}
+            change={15}
+            changeLabel="from last month"
+            icon={CheckCircle}
+            color="purple"
+            subtitle="Machine learning enhanced"
+          />
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Variants</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalVariants.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              <TrendingUp className="inline h-3 w-3 mr-1 text-green-500" />
-              +8% from last month
-            </p>
-          </CardContent>
-        </Card>
+        {/* Quick Actions */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold">Quick Actions</h2>
+            <Zap className="h-5 w-5 text-yellow-500" />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {quickActions.map((action, index) => (
+              <QuickActionCard
+                key={index}
+                title={action.title}
+                description={action.description}
+                icon={action.icon}
+                color={action.color}
+                action={action.action}
+              />
+            ))}
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pathogenic</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {stats?.pathogenicVariants.toLocaleString()}
+        {/* Charts Section */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Variants by Chromosome */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold">Variants by Chromosome</h3>
+              <BarChart3 className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="text-xs text-muted-foreground">
-              {((stats?.pathogenicVariants! / stats?.totalVariants!) * 100).toFixed(1)}% of total
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Annotations</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalAnnotations.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              Last update: 2 hours ago
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Variants by Chromosome</CardTitle>
-            <CardDescription>Distribution of variants across chromosomes</CardDescription>
-          </CardHeader>
-          <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={stats?.variantsByChromosome}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="chromosome" />
                 <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#3b82f6" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--background))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Clinical Significance</CardTitle>
-            <CardDescription>Breakdown of variants by clinical significance</CardDescription>
-          </CardHeader>
-          <CardContent>
+          {/* Clinical Significance */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold">Clinical Significance</h3>
+              <FileText className="h-5 w-5 text-muted-foreground" />
+            </div>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
                   data={stats?.variantsByClinicalSignificance}
                   cx="50%"
                   cy="50%"
-                  labelLine={false}
-                  label={(entry) => `${entry.name}: ${entry.value.toLocaleString()}`}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
+                  label={(entry) => entry.name}
                 >
                   {stats?.variantsByClinicalSignificance.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--background))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px'
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
 
-      {/* Activity Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Platform Activity</CardTitle>
-          <CardDescription>Import and export activity over the last 7 days</CardDescription>
-        </CardHeader>
-        <CardContent>
+        {/* Activity and Progress */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <ActivityFeedCard />
+          </div>
+          <div className="space-y-6">
+            <ProgressCard
+              title="Database Coverage"
+              current={stats?.totalGenes || 0}
+              total={25000}
+              color="blue"
+            />
+            <ProgressCard
+              title="AI Analysis Complete"
+              current={stats?.totalAnnotations || 0}
+              total={1500000}
+              color="purple"
+            />
+          </div>
+        </div>
+
+        {/* Platform Activity Chart */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold">Platform Activity</h3>
+            <span className="text-sm text-muted-foreground">Last 7 days</span>
+          </div>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={stats?.recentActivity}>
-              <CartesianGrid strokeDasharray="3 3" />
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
               <XAxis dataKey="date" />
               <YAxis />
-              <Tooltip />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: 'hsl(var(--background))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px'
+                }}
+              />
               <Legend />
-              <Line type="monotone" dataKey="imports" stroke="#3b82f6" name="Imports" />
-              <Line type="monotone" dataKey="exports" stroke="#10b981" name="Exports" />
+              <Line 
+                type="monotone" 
+                dataKey="imports" 
+                stroke="#3b82f6" 
+                strokeWidth={3}
+                dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                name="Data Imports" 
+              />
+              <Line 
+                type="monotone" 
+                dataKey="exports" 
+                stroke="#10b981" 
+                strokeWidth={3}
+                dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+                name="Data Exports" 
+              />
             </LineChart>
           </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Latest updates and changes in the platform</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center">
-              <div className="flex-1">
-                <p className="text-sm font-medium">BRCA1 annotations updated</p>
-                <p className="text-xs text-muted-foreground">234 new clinical annotations added</p>
-              </div>
-              <span className="text-xs text-muted-foreground">2 hours ago</span>
-            </div>
-            <div className="flex items-center">
-              <div className="flex-1">
-                <p className="text-sm font-medium">New pathogenic variant identified</p>
-                <p className="text-xs text-muted-foreground">TP53 c.742C&gt;T marked as pathogenic</p>
-              </div>
-              <span className="text-xs text-muted-foreground">5 hours ago</span>
-            </div>
-            <div className="flex items-center">
-              <div className="flex-1">
-                <p className="text-sm font-medium">Bulk import completed</p>
-                <p className="text-xs text-muted-foreground">1,234 variants imported successfully</p>
-              </div>
-              <span className="text-xs text-muted-foreground">1 day ago</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      </div>
-    </MainLayout>
+        </div>
+      </main>
+    </div>
   );
 }

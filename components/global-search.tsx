@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Loader2, Database, Activity, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -10,214 +11,259 @@ import { useDebounce } from '@/hooks/use-debounce';
 interface SearchResult {
   id: string;
   type: 'gene' | 'variant';
-  [key: string]: any;
+  title: string;
+  subtitle: string;
+  description: string;
+  badge?: string;
 }
 
 interface SearchResponse {
   query: string;
   total: number;
   results: {
-    genes: SearchResult[];
-    variants: SearchResult[];
+    genes: Array<{
+      id: string;
+      symbol: string;
+      name: string;
+      chromosome: string;
+      variant_count: number;
+    }>;
+    variants: Array<{
+      id: string;
+      variant_id: string;
+      gene_symbol: string;
+      position: string;
+      clinical_significance: string;
+    }>;
   };
 }
 
 export function GlobalSearch() {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResponse | null>(null);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   
   const debouncedQuery = useDebounce(query, 300);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (debouncedQuery.length >= 2) {
-      performSearch();
-    } else {
-      setResults(null);
-    }
-  }, [debouncedQuery]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
+  // Search function
+  const performSearch = async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      return;
     }
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
-        event.preventDefault();
-        setOpen(true);
-      }
-      if (event.key === 'Escape') {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const performSearch = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/search?query=${encodeURIComponent(debouncedQuery)}&limit=5`);
-      if (response.ok) {
-        const data = await response.json();
-        setResults(data.data);
-      }
+      const response = await fetch(`/api/search?query=${encodeURIComponent(searchQuery)}&limit=8`);
+      if (!response.ok) throw new Error('Search failed');
+      
+      const data: SearchResponse = await response.json();
+      
+      const searchResults: SearchResult[] = [
+        ...data.results.genes.map(gene => ({
+          id: gene.id,
+          type: 'gene' as const,
+          title: gene.symbol,
+          subtitle: gene.name,
+          description: `Chr ${gene.chromosome} • ${gene.variant_count} variants`,
+          badge: `Chr ${gene.chromosome}`,
+        })),
+        ...data.results.variants.map(variant => ({
+          id: variant.id,
+          type: 'variant' as const,
+          title: variant.variant_id,
+          subtitle: variant.gene_symbol,
+          description: `Position ${variant.position}`,
+          badge: variant.clinical_significance,
+        })),
+      ];
+      
+      setResults(searchResults.slice(0, 8));
+      setSelectedIndex(-1);
     } catch (error) {
       console.error('Search error:', error);
+      setResults([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResultClick = (result: SearchResult) => {
-    setOpen(false);
-    setQuery('');
-    setResults(null);
-    
-    if (result.type === 'gene') {
-      router.push(`/genes/${result.id}`);
-    } else if (result.type === 'variant') {
-      router.push(`/variants/${result.id}`);
+  // Effect for debounced search
+  useEffect(() => {
+    if (debouncedQuery) {
+      performSearch(debouncedQuery);
+    } else {
+      setResults([]);
     }
+  }, [debouncedQuery]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          setSelectedIndex(prev => Math.min(prev + 1, results.length - 1));
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          setSelectedIndex(prev => Math.max(prev - 1, -1));
+          break;
+        case 'Enter':
+          e.preventDefault();
+          if (selectedIndex >= 0 && results[selectedIndex]) {
+            handleResultClick(results[selectedIndex]);
+          }
+          break;
+        case 'Escape':
+          e.preventDefault();
+          setIsOpen(false);
+          setQuery('');
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, results, selectedIndex]);
+
+  // Click outside to close
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (resultsRef.current && !resultsRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  const handleResultClick = (result: SearchResult) => {
+    const path = result.type === 'gene' ? `/genes/${result.id}` : `/variants/${result.id}`;
+    router.push(path);
+    setIsOpen(false);
+    setQuery('');
+  };
+
+  const handleOpenSearch = () => {
+    setIsOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-      >
-        <Search size={16} />
-        <span>Search...</span>
-        <kbd className="hidden md:inline-flex items-center space-x-1 px-2 py-0.5 text-xs bg-white rounded border">
-          <span>⌘</span>
-          <span>K</span>
-        </kbd>
-      </button>
+      {/* Desktop Search Button */}
+      <div className="hidden md:block relative">
+        <Button
+          variant="outline"
+          className="w-64 justify-start text-muted-foreground"
+          onClick={handleOpenSearch}
+        >
+          <Search className="mr-2 h-4 w-4" />
+          Search...
+          <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+            <span className="text-xs">⌘</span>K
+          </kbd>
+        </Button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 bg-black/50">
-          <div ref={searchRef} className="fixed top-20 left-1/2 transform -translate-x-1/2 w-full max-w-2xl">
-            <div className="bg-white rounded-lg shadow-2xl">
-              <div className="flex items-center px-4 py-3 border-b">
-                <Search className="text-gray-400 mr-3" size={20} />
-                <Input
-                  autoFocus
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search genes, variants..."
-                  className="flex-1 border-0 focus:ring-0 p-0"
-                />
-                {loading && <Loader2 className="animate-spin text-gray-400" size={20} />}
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    setQuery('');
-                    setResults(null);
-                  }}
-                  className="ml-3 text-gray-400 hover:text-gray-600"
-                >
-                  <X size={20} />
-                </button>
-              </div>
+        {/* Desktop Search Modal */}
+        {isOpen && (
+          <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
+            <div className="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]">
+              <div ref={resultsRef} className="bg-background border rounded-lg shadow-lg">
+                <div className="flex items-center border-b px-3">
+                  <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                  <Input
+                    ref={inputRef}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search genes, variants..."
+                    className="flex-1 border-0 bg-transparent focus-visible:ring-0 shadow-none"
+                  />
+                  <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
 
-              {results && results.total > 0 && (
                 <div className="max-h-96 overflow-y-auto">
-                  {results.results.genes.length > 0 && (
-                    <div className="p-2">
-                      <p className="text-xs font-medium text-gray-500 px-2 py-1">Genes</p>
-                      {results.results.genes.map((gene) => (
+                  {loading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <span className="text-sm text-muted-foreground">Searching...</span>
+                    </div>
+                  ) : results.length > 0 ? (
+                    <div className="py-2">
+                      {results.map((result, index) => (
                         <button
-                          key={gene.id}
-                          onClick={() => handleResultClick(gene)}
-                          className="w-full flex items-center justify-between p-2 hover:bg-gray-100 rounded"
+                          key={result.id}
+                          className={`w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors ${
+                            index === selectedIndex ? 'bg-muted/50' : ''
+                          }`}
+                          onClick={() => handleResultClick(result)}
                         >
-                          <div className="flex items-center space-x-3">
-                            <Database className="text-blue-500" size={16} />
-                            <div className="text-left">
-                              <p className="font-medium">{gene.symbol}</p>
-                              <p className="text-sm text-gray-500 truncate max-w-md">
-                                {gene.name}
-                              </p>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              {result.type === 'gene' ? (
+                                <Database className="h-4 w-4 text-blue-500" />
+                              ) : (
+                                <Activity className="h-4 w-4 text-green-500" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium truncate">{result.title}</div>
+                                <div className="text-sm text-muted-foreground truncate">
+                                  {result.subtitle}
+                                </div>
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {result.description}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Badge variant="secondary" className="text-xs">
-                              Chr {gene.chromosome}
-                            </Badge>
-                            <span className="text-xs text-gray-500">
-                              {gene.variant_count} variants
-                            </span>
+                            {result.badge && (
+                              <Badge variant="outline" className="text-xs">
+                                {result.badge}
+                              </Badge>
+                            )}
                           </div>
                         </button>
                       ))}
                     </div>
-                  )}
-
-                  {results.results.variants.length > 0 && (
-                    <div className="p-2 border-t">
-                      <p className="text-xs font-medium text-gray-500 px-2 py-1">Variants</p>
-                      {results.results.variants.map((variant) => (
-                        <button
-                          key={variant.id}
-                          onClick={() => handleResultClick(variant)}
-                          className="w-full flex items-center justify-between p-2 hover:bg-gray-100 rounded"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <Activity className="text-green-500" size={16} />
-                            <div className="text-left">
-                              <p className="font-medium">{variant.variant_id}</p>
-                              <p className="text-sm text-gray-500">
-                                {variant.gene_symbol} - {variant.change}
-                              </p>
-                            </div>
-                          </div>
-                          {variant.clinical_significance && (
-                            <Badge 
-                              variant={
-                                variant.clinical_significance.toLowerCase().includes('pathogenic') 
-                                  ? 'destructive' 
-                                  : 'secondary'
-                              }
-                              className="text-xs"
-                            >
-                              {variant.clinical_significance}
-                            </Badge>
-                          )}
-                        </button>
-                      ))}
+                  ) : query ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      No results found for "{query}"
+                    </div>
+                  ) : (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      Start typing to search genes and variants...
                     </div>
                   )}
                 </div>
-              )}
-
-              {results && results.total === 0 && (
-                <div className="p-8 text-center text-gray-500">
-                  <p>No results found for "{query}"</p>
-                </div>
-              )}
-
-              {!results && query.length >= 2 && !loading && (
-                <div className="p-8 text-center text-gray-500">
-                  <p>Type to search...</p>
-                </div>
-              )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Global keyboard shortcut */}
+      <div className="hidden">
+        <input
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+              e.preventDefault();
+              handleOpenSearch();
+            }
+          }}
+        />
+      </div>
     </>
   );
 }

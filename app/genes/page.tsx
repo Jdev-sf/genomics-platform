@@ -25,30 +25,30 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
 import { LazyTable } from '@/components/lazy-table';
+import { ModernHeader } from '@/components/layout/modern-header';
 
 interface Gene {
   id: string;
-  gene_id: string;
   symbol: string;
   name: string;
   chromosome: string;
-  start_position: string | null;
-  end_position: string | null;
-  variant_count: number;
-  pathogenic_count: number;
+  startPosition: number;
+  endPosition: number;
+  strand: string;
+  biotype: string;
+  description: string;
+  variantCount: number;
+  pathogenicVariantCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface GenesResponse {
-  status: string;
   data: Gene[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export default function GenesPage() {
@@ -56,349 +56,400 @@ export default function GenesPage() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  // Stati
   const [genes, setGenes] = useState<Gene[]>([]);
   const [loading, setLoading] = useState(true);
-  const [meta, setMeta] = useState<GenesResponse['meta'] | null>(null);
-  
-  // Filtri e ricerca
-  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [chromosome, setChromosome] = useState(searchParams.get('chromosome') || 'all');
+  const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
+  const [pageSize] = useState(parseInt(searchParams.get('pageSize') || '25'));
+  const [total, setTotal] = useState(0);
   const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'symbol');
   const [sortOrder, setSortOrder] = useState(searchParams.get('sortOrder') || 'asc');
-  const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
 
-  const debouncedSearch = useDebounce(search, 500);
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-  // Memoized sort handler
-  const handleSort = useCallback((field: string) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortOrder('asc');
-    }
-    setPage(1);
-  }, [sortBy, sortOrder]);
+  const updateURLParams = useCallback(() => {
+    const params = new URLSearchParams();
+    if (debouncedSearchQuery) params.set('search', debouncedSearchQuery);
+    if (chromosome && chromosome !== 'all') params.set('chromosome', chromosome);
+    if (page > 1) params.set('page', page.toString());
+    if (pageSize !== 25) params.set('pageSize', pageSize.toString());
+    if (sortBy !== 'symbol') params.set('sortBy', sortBy);
+    if (sortOrder !== 'asc') params.set('sortOrder', sortOrder);
 
-  // Memoized gene click handler
-  const handleGeneClick = useCallback((geneId: string) => {
-    router.push(`/genes/${geneId}`);
-  }, [router]);
+    const newURL = `/genes${params.toString() ? '?' + params.toString() : ''}`;
+    router.replace(newURL, { scroll: false });
+  }, [debouncedSearchQuery, chromosome, page, pageSize, sortBy, sortOrder, router]);
 
-  // Funzione per aggiornare URL con parametri
-  const updateUrlParams = useCallback((params: Record<string, string>) => {
-    const newParams = new URLSearchParams(searchParams.toString());
-    
-    Object.entries(params).forEach(([key, value]) => {
-      if (value && value !== 'all') {
-        newParams.set(key, value);
-      } else {
-        newParams.delete(key);
-      }
-    });
-
-    router.push(`/genes?${newParams.toString()}`);
-  }, [searchParams, router]);
-
-  // Fetch genes
   const fetchGenes = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set('page', page.toString());
-      params.set('limit', '20');
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      if (chromosome && chromosome !== 'all') params.set('chromosome', chromosome);
-      params.set('sortBy', sortBy);
-      params.set('sortOrder', sortOrder);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+        sortBy,
+        sortOrder,
+        ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
+        ...(chromosome && chromosome !== 'all' && { chromosome }),
+      });
 
-      const response = await fetch(`/api/genes?${params.toString()}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch genes');
-      }
+      const response = await fetch(`/api/genes?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch genes');
 
       const data: GenesResponse = await response.json();
       setGenes(data.data);
-      setMeta(data.meta);
+      setTotal(data.total);
     } catch (error) {
       console.error('Error fetching genes:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load genes. Please try again.',
+        description: 'Failed to fetch genes. Please try again.',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch, chromosome, sortBy, sortOrder, toast]);
+  }, [page, pageSize, debouncedSearchQuery, chromosome, sortBy, sortOrder, toast]);
 
-  // Effect per fetch iniziale e quando cambiano i parametri
   useEffect(() => {
     fetchGenes();
-  }, [fetchGenes]);
+    updateURLParams();
+  }, [fetchGenes, updateURLParams]);
 
-  // Effect per aggiornare URL quando cambiano i filtri
-  useEffect(() => {
-    updateUrlParams({
-      search: debouncedSearch,
-      chromosome,
-      sortBy,
-      sortOrder,
-      page: page.toString(),
-    });
-  }, [debouncedSearch, chromosome, sortBy, sortOrder, page, updateUrlParams]);
-
-  // Handlers già definiti sopra, rimuoviamo i duplicati
+  const handleSort = (column: string) => {
+    const newSortOrder = sortBy === column && sortOrder === 'asc' ? 'desc' : 'asc';
+    setSortBy(column);
+    setSortOrder(newSortOrder);
+    setPage(1);
+  };
 
   const handleExport = async () => {
     try {
-      const params = new URLSearchParams();
-      params.set('type', 'genes');
-      params.set('format', 'csv');
-      
-      if (debouncedSearch || chromosome !== 'all') {
-        const filters: any = {};
-        if (debouncedSearch) filters.search = debouncedSearch;
-        if (chromosome !== 'all') filters.chromosome = chromosome;
-        params.set('filters', JSON.stringify(filters));
-      }
+      const params = new URLSearchParams({
+        format: 'csv',
+        ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
+        ...(chromosome && chromosome !== 'all' && { chromosome }),
+      });
 
-      const response = await fetch(`/api/export?${params.toString()}`);
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `genes_export_${Date.now()}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        toast({
-          title: 'Export Successful',
-          description: 'Your gene data has been exported.',
-        });
-      } else {
-        throw new Error('Export failed');
-      }
-    } catch (error) {
+      const response = await fetch(`/api/genes/export?${params}`);
+      if (!response.ok) throw new Error('Export failed');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `genes-export-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
       toast({
-        title: 'Export Failed',
-        description: 'Unable to export data. Please try again.',
+        title: 'Export completed',
+        description: 'Genes data has been exported successfully.',
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({
+        title: 'Export failed',
+        description: 'Failed to export genes data. Please try again.',
         variant: 'destructive',
       });
     }
   };
 
-  return (
-    <div className="container mx-auto py-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Genes Database</h1>
-          <p className="text-muted-foreground mt-1">
-            Browse and search genomic data
-          </p>
-        </div>
-        <Button onClick={handleExport} variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Export
-        </Button>
-      </div>
+  const chromosomes = useMemo(() => {
+    const chroms = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 
+                   '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y'];
+    return chroms;
+  }, []);
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Search */}
-            <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by symbol, name, or ID..."
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(1);
-                  }}
-                  className="pl-9"
-                />
+  const totalPages = Math.ceil(total / pageSize);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+      <ModernHeader />
+      <div className="container mx-auto py-6 space-y-6 px-4">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Genes Database</h1>
+            <p className="text-muted-foreground">
+              Explore and analyze human genes with AI-powered insights
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleExport} disabled={loading}>
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Search & Filter</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by gene symbol or name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-2 block">Chromosome</label>
+                <Select value={chromosome} onValueChange={setChromosome}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All chromosomes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All chromosomes</SelectItem>
+                    {chromosomes.map((chr) => (
+                      <SelectItem key={chr} value={chr}>
+                        Chromosome {chr}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">Sort by</label>
+                <Select value={`${sortBy}-${sortOrder}`} onValueChange={(value) => {
+                  const [newSortBy, newSortOrder] = value.split('-');
+                  setSortBy(newSortBy);
+                  setSortOrder(newSortOrder);
+                  setPage(1);
+                }}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="symbol-asc">Symbol (A-Z)</SelectItem>
+                    <SelectItem value="symbol-desc">Symbol (Z-A)</SelectItem>
+                    <SelectItem value="variantCount-desc">Most variants</SelectItem>
+                    <SelectItem value="variantCount-asc">Least variants</SelectItem>
+                    <SelectItem value="pathogenicVariantCount-desc">Most pathogenic</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {/* Chromosome Filter */}
-            <Select
-              value={chromosome}
-              onValueChange={(value) => {
-                setChromosome(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Chromosomes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Chromosomes</SelectItem>
-                {[...Array(22)].map((_, i) => (
-                  <SelectItem key={i + 1} value={(i + 1).toString()}>
-                    Chromosome {i + 1}
-                  </SelectItem>
-                ))}
-                <SelectItem value="X">Chromosome X</SelectItem>
-                <SelectItem value="Y">Chromosome Y</SelectItem>
-                <SelectItem value="MT">Mitochondrial</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Sort */}
-            <Select
-              value={`${sortBy}-${sortOrder}`}
-              onValueChange={(value) => {
-                const [field, order] = value.split('-');
-                setSortBy(field);
-                setSortOrder(order);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Sort by..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="symbol-asc">Symbol (A-Z)</SelectItem>
-                <SelectItem value="symbol-desc">Symbol (Z-A)</SelectItem>
-                <SelectItem value="name-asc">Name (A-Z)</SelectItem>
-                <SelectItem value="name-desc">Name (Z-A)</SelectItem>
-                <SelectItem value="variantCount-desc">Most Variants</SelectItem>
-                <SelectItem value="variantCount-asc">Least Variants</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Results */}
-      <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center p-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : genes.length === 0 ? (
-            <div className="text-center p-12">
-              <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No genes found matching your criteria.</p>
-            </div>
-          ) : (
-            <LazyTable>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead 
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleSort('symbol')}
+            {(debouncedSearchQuery || (chromosome && chromosome !== 'all')) && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Active filters:</span>
+                {debouncedSearchQuery && (
+                  <Badge variant="secondary" className="gap-1">
+                    Search: {debouncedSearchQuery}
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="ml-1 hover:bg-background rounded-full"
                     >
-                      Symbol
-                      {sortBy === 'symbol' && (
-                        <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Chromosome</TableHead>
-                    <TableHead className="text-right">Variants</TableHead>
-                    <TableHead className="text-right">Pathogenic</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {genes.map((gene) => (
-                    <TableRow 
-                      key={gene.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleGeneClick(gene.id)}
+                      ×
+                    </button>
+                  </Badge>
+                )}
+                {chromosome && chromosome !== 'all' && (
+                  <Badge variant="secondary" className="gap-1">
+                    Chr {chromosome}
+                    <button
+                      onClick={() => setChromosome('all')}
+                      className="ml-1 hover:bg-background rounded-full"
                     >
-                      <TableCell className="font-medium">
-                        <span className="text-primary hover:underline">
-                          {gene.symbol}
-                        </span>
-                      </TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {gene.name}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          Chr {gene.chromosome}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {gene.variant_count.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="text-destructive font-medium">
-                          {gene.pathogenic_count.toLocaleString()}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleGeneClick(gene.id);
-                          }}
+                      ×
+                    </button>
+                  </Badge>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Results */}
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>
+                {loading ? (
+                  'Loading...'
+                ) : (
+                  `${(total || 0).toLocaleString()} genes found`
+                )}
+              </CardTitle>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                Loading genes...
+              </div>
+            ) : genes.length > 0 ? (
+              <div className="space-y-4">
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead 
+                          className="cursor-pointer select-none"
+                          onClick={() => handleSort('symbol')}
                         >
-                          View Details
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </LazyTable>
-          )}
-        </CardContent>
-      </Card>
+                          Symbol {sortBy === 'symbol' && (sortOrder === 'asc' ? '↑' : '↓')}
+                        </TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead 
+                          className="cursor-pointer select-none"
+                          onClick={() => handleSort('chromosome')}
+                        >
+                          Location {sortBy === 'chromosome' && (sortOrder === 'asc' ? '↑' : '↓')}
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer select-none text-right"
+                          onClick={() => handleSort('variantCount')}
+                        >
+                          Variants {sortBy === 'variantCount' && (sortOrder === 'asc' ? '↑' : '↓')}
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer select-none text-right"
+                          onClick={() => handleSort('pathogenicVariantCount')}
+                        >
+                          Pathogenic {sortBy === 'pathogenicVariantCount' && (sortOrder === 'asc' ? '↑' : '↓')}
+                        </TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {genes.map((gene) => (
+                        <TableRow 
+                          key={gene.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => router.push(`/genes/${gene.id}`)}
+                        >
+                          <TableCell className="font-medium">
+                            <span className="text-blue-600 hover:text-blue-800 font-semibold">
+                              {gene.symbol}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{gene.name}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {gene.biotype}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="font-mono text-xs">
+                              Chr {gene.chromosome}:{(gene.startPosition || 0).toLocaleString()}-{(gene.endPosition || 0).toLocaleString()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {(gene.variantCount || 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={`font-mono ${(gene.pathogenicVariantCount || 0) > 0 ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
+                              {(gene.pathogenicVariantCount || 0).toLocaleString()}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/genes/${gene.id}`);
+                              }}
+                            >
+                              View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
 
-      {/* Pagination */}
-      {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {(meta.page - 1) * meta.limit + 1} to{' '}
-            {Math.min(meta.page * meta.limit, meta.total)} of {meta.total} genes
-          </p>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(page - 1)}
-              disabled={!meta.hasPrevPage}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Previous
-            </Button>
-            <div className="flex items-center space-x-1">
-              <span className="text-sm">
-                Page {meta.page} of {meta.totalPages}
-              </span>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(page + 1)}
-              disabled={!meta.hasNextPage}
-            >
-              Next
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+                {/* Pagination */}
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {(total || 0).toLocaleString()} genes
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(Math.max(1, page - 1))}
+                      disabled={page <= 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center space-x-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        const pageNum = i + 1;
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={page === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setPage(pageNum)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                      {totalPages > 5 && (
+                        <>
+                          <span className="text-muted-foreground">...</span>
+                          <Button
+                            variant={page === totalPages ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setPage(totalPages)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {totalPages}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(Math.min(totalPages, page + 1))}
+                      disabled={page >= totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No genes found</h3>
+                <p className="text-muted-foreground">
+                  Try adjusting your search criteria or filters.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

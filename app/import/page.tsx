@@ -1,435 +1,412 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Upload, FileText, AlertCircle, CheckCircle, Download, Loader2, X, Database, Activity } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { 
+  Upload, 
+  FileText, 
+  Database, 
+  CheckCircle, 
+  AlertCircle, 
+  Download,
+  Eye,
+  Trash2,
+  Loader2,
+  Info
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/components/ui/use-toast';
+import { ModernHeader } from '@/components/layout/modern-header';
 
-interface ImportResult {
-  total: number;
-  successful: number;
-  failed: number;
-  errors: Array<{
-    row: number;
-    error: string;
-    data: any;
-  }>;
-}
-
-interface RecentImport {
+interface ImportJob {
   id: string;
-  type: string;
-  results: ImportResult;
+  filename: string;
+  fileSize: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  recordsProcessed: number;
+  totalRecords: number;
+  errors: string[];
+  warnings: string[];
   createdAt: string;
-}
-
-interface ImportStats {
-  totalGenes: number;
-  totalVariants: number;
-  totalAnnotations: number;
+  completedAt?: string;
 }
 
 export default function ImportPage() {
+  const router = useRouter();
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [importing, setImporting] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [importType, setImportType] = useState<'genes' | 'variants'>('genes');
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [recentImports, setRecentImports] = useState<RecentImport[]>([]);
-  const [stats, setStats] = useState<ImportStats | null>(null);
-  const [progress, setProgress] = useState(0);
+  const [dragActive, setDragActive] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
+  const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    fetchImportHistory();
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
   }, []);
 
-  const fetchImportHistory = async () => {
-    try {
-      const response = await fetch('/api/import/progress');
-      if (response.ok) {
-        const data = await response.json();
-        setRecentImports(data.data.recentImports);
-        setStats(data.data.stats);
-      }
-    } catch (error) {
-      console.error('Error fetching import history:', error);
-    }
-  };
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.name.endsWith('.csv') || file.name.endsWith('.json')) {
-        setSelectedFile(file);
-        setImportResult(null);
-      } else {
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      const validFiles = droppedFiles.filter(file => 
+        file.type === 'text/csv' || 
+        file.type === 'application/json' || 
+        file.name.endsWith('.csv') || 
+        file.name.endsWith('.json')
+      );
+      
+      if (validFiles.length !== droppedFiles.length) {
         toast({
-          title: 'Invalid file format',
-          description: 'Please select a CSV or JSON file.',
+          title: 'Invalid files',
+          description: 'Only CSV and JSON files are supported.',
           variant: 'destructive',
         });
       }
+      
+      setFiles(prev => [...prev, ...validFiles]);
+    }
+  }, [toast]);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const selectedFiles = Array.from(e.target.files);
+      setFiles(prev => [...prev, ...selectedFiles]);
     }
   };
 
-  const handleImport = async () => {
-    if (!selectedFile) return;
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  };
 
-    setImporting(true);
-    setProgress(0);
+  const startImport = async () => {
+    if (files.length === 0) return;
+
+    setUploading(true);
     
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('type', importType);
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', file.name.endsWith('.csv') ? 'genes' : 'variants');
 
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => Math.min(prev + 10, 90));
-      }, 500);
+        const response = await fetch('/api/import', {
+          method: 'POST',
+          body: formData,
+        });
 
-      const response = await fetch('/api/import', {
-        method: 'POST',
-        body: formData,
+        if (!response.ok) {
+          throw new Error(`Failed to upload ${file.name}`);
+        }
+
+        const result = await response.json();
+        
+        // Add mock import job
+        const newJob: ImportJob = {
+          id: result.jobId || Date.now().toString(),
+          filename: file.name,
+          fileSize: file.size,
+          status: 'processing',
+          progress: 0,
+          recordsProcessed: 0,
+          totalRecords: 0,
+          errors: [],
+          warnings: [],
+          createdAt: new Date().toISOString(),
+        };
+
+        setImportJobs(prev => [newJob, ...prev]);
+      }
+
+      setFiles([]);
+      
+      toast({
+        title: 'Import started',
+        description: `${files.length} file(s) uploaded successfully.`,
       });
 
-      clearInterval(progressInterval);
-      setProgress(100);
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setImportResult(data.results);
-        toast({
-          title: 'Import completed',
-          description: data.message,
-          variant: data.results.failed > 0 ? 'default' : 'default',
-        });
-        fetchImportHistory();
-      } else {
-        toast({
-          title: 'Import failed',
-          description: data.error,
-          variant: 'destructive',
-        });
-      }
     } catch (error) {
+      console.error('Import error:', error);
       toast({
-        title: 'Import error',
-        description: 'An error occurred during import.',
+        title: 'Import failed',
+        description: 'Failed to start import process.',
         variant: 'destructive',
       });
     } finally {
-      setImporting(false);
-      setProgress(0);
+      setUploading(false);
     }
   };
 
-  const downloadTemplate = (type: 'genes' | 'variants') => {
-    const templates = {
-      genes: {
-        headers: ['gene_id', 'symbol', 'name', 'chromosome', 'start_position', 'end_position', 'strand', 'biotype', 'description'],
-        example: ['HGNC:1234', 'GENE1', 'Gene 1 name', '1', '1000000', '1100000', '+', 'protein_coding', 'Example gene'],
-      },
-      variants: {
-        headers: ['variant_id', 'gene_symbol', 'chromosome', 'position', 'reference_allele', 'alternate_allele', 'variant_type', 'consequence', 'impact', 'protein_change', 'clinical_significance', 'frequency'],
-        example: ['rs12345', 'GENE1', '1', '1050000', 'A', 'G', 'SNV', 'missense_variant', 'MODERATE', 'p.Arg123Gln', 'Pathogenic', '0.001'],
-      },
+  const getStatusIcon = (status: ImportJob['status']) => {
+    switch (status) {
+      case 'pending':
+        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+      case 'processing':
+        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+      case 'completed':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'failed':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+    }
+  };
+
+  const getStatusBadge = (status: ImportJob['status']) => {
+    const variants = {
+      pending: 'secondary',
+      processing: 'default',
+      completed: 'secondary',
+      failed: 'destructive',
+    } as const;
+
+    const colors = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      processing: 'bg-blue-100 text-blue-800',
+      completed: 'bg-green-100 text-green-800',
+      failed: 'bg-red-100 text-red-800',
     };
 
-    const template = templates[type];
-    const csv = [template.headers.join(','), template.example.join(',')].join('\n');
-    
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${type}_template.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    return (
+      <Badge variant={variants[status]} className={colors[status]}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </Badge>
+    );
   };
 
-  const clearFile = () => {
-    setSelectedFile(null);
-    setImportResult(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Data Import</h1>
-        <p className="text-muted-foreground mt-1">
-          Import genes and variants from CSV or JSON files
-        </p>
-      </div>
-
-      {stats && (
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Genes</CardTitle>
-              <Database className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalGenes.toLocaleString()}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Variants</CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalVariants.toLocaleString()}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Annotations</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalAnnotations.toLocaleString()}</div>
-            </CardContent>
-          </Card>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+      <ModernHeader />
+      <div className="container mx-auto py-6 space-y-6 px-4">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Data Import</h1>
+            <p className="text-muted-foreground">
+              Upload genomic datasets for analysis and integration
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => router.push('/import/templates')}>
+              <Download className="mr-2 h-4 w-4" />
+              Templates
+            </Button>
+          </div>
         </div>
-      )}
 
-      <Tabs defaultValue="import" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="import">Import Data</TabsTrigger>
-          <TabsTrigger value="history">Import History</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="import" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Import Configuration</CardTitle>
-              <CardDescription>
-                Select the type of data you want to import and upload your file
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm font-medium mb-2">Data Type</p>
-                <div className="flex space-x-4">
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      value="genes"
-                      checked={importType === 'genes'}
-                      onChange={(e) => setImportType(e.target.value as 'genes' | 'variants')}
-                      className="w-4 h-4"
-                    />
-                    <span>Genes</span>
-                  </label>
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      value="variants"
-                      checked={importType === 'variants'}
-                      onChange={(e) => setImportType(e.target.value as 'genes' | 'variants')}
-                      className="w-4 h-4"
-                    />
-                    <span>Variants</span>
-                  </label>
+        {/* Upload Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Upload Files
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Drag & Drop Area */}
+            <div
+              className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                dragActive 
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
+                  : 'border-gray-300 hover:border-gray-400'
+              }`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <input
+                type="file"
+                multiple
+                accept=".csv,.json"
+                onChange={handleFileInput}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              
+              <div className="space-y-4">
+                <div className="mx-auto w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                  <Upload className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-lg font-medium">Drop files here or click to browse</p>
+                  <p className="text-sm text-muted-foreground">
+                    Supports CSV and JSON files up to 100MB
+                  </p>
                 </div>
               </div>
+            </div>
 
-              <div>
-                <p className="text-sm font-medium mb-2">File Upload</p>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv,.json"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  
-                  {selectedFile ? (
-                    <div className="space-y-2">
-                      <FileText className="h-12 w-12 text-gray-400 mx-auto" />
-                      <p className="text-sm font-medium">{selectedFile.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {(selectedFile.size / 1024).toFixed(2)} KB
-                      </p>
+            {/* File List */}
+            {files.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">Selected Files ({files.length})</h3>
+                  <Button
+                    onClick={startImport}
+                    disabled={uploading}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Start Import
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {files.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <FileText className="h-5 w-5 text-blue-500" />
+                        <div>
+                          <p className="font-medium">{file.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatFileSize(file.size)} • {file.type || 'Unknown type'}
+                          </p>
+                        </div>
+                      </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={clearFile}
-                        className="text-red-600 hover:text-red-700"
+                        onClick={() => removeFile(index)}
                       >
-                        <X className="h-4 w-4 mr-1" />
-                        Remove
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <Upload className="h-12 w-12 text-gray-400 mx-auto" />
-                      <p className="text-sm text-gray-600">
-                        Drop your file here, or{' '}
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="text-blue-600 hover:underline"
-                        >
-                          browse
-                        </button>
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Supports CSV and JSON files
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Button
-                  variant="outline"
-                  onClick={() => downloadTemplate(importType)}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Download Template
-                </Button>
-                
-                <Button
-                  onClick={handleImport}
-                  disabled={!selectedFile || importing}
-                >
-                  {importing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Import
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {importing && (
-                <div className="space-y-2">
-                  <Progress value={progress} />
-                  <p className="text-sm text-center text-gray-500">
-                    Processing your file...
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {importResult && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Import Results</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold">{importResult.total}</p>
-                    <p className="text-sm text-gray-500">Total Records</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-green-600">{importResult.successful}</p>
-                    <p className="text-sm text-gray-500">Successful</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-red-600">{importResult.failed}</p>
-                    <p className="text-sm text-gray-500">Failed</p>
-                  </div>
-                </div>
-
-                {importResult.errors.length > 0 && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Import Errors</AlertTitle>
-                    <AlertDescription>
-                      <div className="mt-2 max-h-40 overflow-y-auto space-y-1">
-                        {importResult.errors.slice(0, 5).map((error, index) => (
-                          <p key={index} className="text-sm">
-                            Row {error.row}: {error.error}
-                          </p>
-                        ))}
-                        {importResult.errors.length > 5 && (
-                          <p className="text-sm font-medium">
-                            ...and {importResult.errors.length - 5} more errors
-                          </p>
-                        )}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="history" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Imports</CardTitle>
-              <CardDescription>
-                Your import history from the last 30 days
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {recentImports.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">
-                  No import history found
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {recentImports.map((importItem) => (
-                    <div
-                      key={importItem.id}
-                      className="border rounded-lg p-4 space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <Badge variant="outline">
-                            {importItem.type}
-                          </Badge>
-                          <span className="text-sm text-gray-500">
-                            {new Date(importItem.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-4 text-sm">
-                          <span className="text-green-600">
-                            {importItem.results.successful} successful
-                          </span>
-                          {importItem.results.failed > 0 && (
-                            <span className="text-red-600">
-                              {importItem.results.failed} failed
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <Progress
-                        value={(importItem.results.successful / importItem.results.total) * 100}
-                        className="h-2"
-                      />
                     </div>
                   ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              </div>
+            )}
+
+            {/* Import Guidelines */}
+            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                <div className="space-y-2">
+                  <h4 className="font-medium text-blue-900 dark:text-blue-100">Import Guidelines</h4>
+                  <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+                    <li>• CSV files should include headers in the first row</li>
+                    <li>• Gene files: symbol, name, chromosome, start_position, end_position</li>
+                    <li>• Variant files: gene_symbol, chromosome, position, ref_allele, alt_allele</li>
+                    <li>• Maximum file size: 100MB per file</li>
+                    <li>• Duplicate records will be automatically detected and skipped</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Import History */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Import History
+              </CardTitle>
+              <Badge variant="secondary">{importJobs.length} jobs</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {importJobs.length === 0 ? (
+              <div className="text-center py-12">
+                <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No imports yet</h3>
+                <p className="text-muted-foreground">
+                  Upload your first file to get started with data import.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {importJobs.map((job) => (
+                  <div key={job.id} className="border rounded-lg p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        {getStatusIcon(job.status)}
+                        <div>
+                          <p className="font-medium">{job.filename}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatFileSize(job.fileSize)} • Started {new Date(job.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {getStatusBadge(job.status)}
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {job.status === 'processing' && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Progress</span>
+                          <span>{job.progress}%</span>
+                        </div>
+                        <Progress value={job.progress} className="h-2" />
+                        <p className="text-xs text-muted-foreground">
+                          {job.recordsProcessed.toLocaleString()} of {job.totalRecords.toLocaleString()} records processed
+                        </p>
+                      </div>
+                    )}
+
+                    {job.status === 'completed' && (
+                      <div className="text-sm text-green-600">
+                        ✓ Successfully imported {job.recordsProcessed.toLocaleString()} records
+                        {job.warnings.length > 0 && (
+                          <span className="text-yellow-600 ml-2">
+                            ({job.warnings.length} warnings)
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {job.status === 'failed' && job.errors.length > 0 && (
+                      <div className="text-sm text-red-600">
+                        <p className="font-medium">Errors:</p>
+                        <ul className="list-disc list-inside space-y-1 mt-1">
+                          {job.errors.map((error, index) => (
+                            <li key={index}>{error}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
