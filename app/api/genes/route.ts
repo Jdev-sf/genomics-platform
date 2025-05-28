@@ -1,53 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withRateLimit } from '@/lib/rate-limit-simple';
+import { validateRequest, paginationSchema, addSecurityHeaders, sanitizedString } from '@/lib/validation';
 import { z } from 'zod';
 
-// Schema di validazione per query params
-const querySchema = z.object({
-  page: z.string().optional().default('1'),
-  limit: z.string().optional().default('20'),
+// Extended schema for genes API
+const genesQuerySchema = paginationSchema.extend({
   search: z.string().optional(),
   chromosome: z.string().optional(),
-  sortBy: z.enum(['symbol', 'name', 'chromosome', 'variantCount']).optional().default('symbol'),
-  sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
 });
 
-export async function GET(request: NextRequest) {
+async function getGenesHandler(request: NextRequest) {
   try {
-    // Verifica autenticazione
     const session = await auth();
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Parse e validazione query params
-    const searchParams = request.nextUrl.searchParams;
-    const queryResult = querySchema.safeParse({
-      page: searchParams.get('page') || undefined,
-      limit: searchParams.get('limit') || undefined,
-      search: searchParams.get('search') || undefined,
-      chromosome: searchParams.get('chromosome') || undefined,
-      sortBy: searchParams.get('sortBy') || undefined,
-      sortOrder: searchParams.get('sortOrder') || undefined,
-    });
-
-    if (!queryResult.success) {
+    // Validate query parameters
+    const validation = await validateRequest(request, genesQuerySchema, 'query');
+    if (validation.error) {
       return NextResponse.json(
-        { error: 'Invalid query parameters', details: queryResult.error.errors },
-        { status: 400 }
+        { error: validation.error },
+        { status: validation.status || 400 }
       );
     }
 
-    const { page, limit, search, chromosome, sortBy, sortOrder } = queryResult.data;
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const skip = (pageNum - 1) * limitNum;
+    const data = validation.data!;
+    const page = data.page ?? 1;
+    const limit = data.limit ?? 20;
+    const sortBy = data.sortBy ?? 'symbol';
+    const sortOrder = data.sortOrder ?? 'asc';
+    const search = data.search;
+    const chromosomeFilter = data.chromosome;
+    
+    const skip = (page - 1) * limit;
 
-    // Costruzione filtri
+    // Build optimized where clause
     const where: any = {};
     
     if (search) {
+      // Use PostgreSQL full-text search
       where.OR = [
         { symbol: { contains: search, mode: 'insensitive' } },
         { name: { contains: search, mode: 'insensitive' } },
@@ -55,35 +49,35 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    if (chromosome) {
-      where.chromosome = chromosome;
+    if (chromosomeFilter) {
+      where.chromosome = chromosomeFilter;
     }
 
-    // Query per il conteggio totale
-    const totalCount = await prisma.gene.count({ where });
-
-    // Query per i geni con conteggio varianti
-    const genes = await prisma.gene.findMany({
-      where,
-      include: {
-        _count: {
-          select: { variants: true }
-        },
-        variants: {
-          where: {
-            clinicalSignificance: 'Pathogenic'
+    // Parallel queries for better performance
+    const [totalCount, genes] = await Promise.all([
+      prisma.gene.count({ where }),
+      prisma.gene.findMany({
+        where,
+        include: {
+          _count: {
+            select: { variants: true }
           },
-          select: { id: true }
-        }
-      },
-      skip,
-      take: limitNum,
-      orderBy: sortBy === 'variantCount' 
-        ? { variants: { _count: sortOrder } }
-        : { [sortBy]: sortOrder }
-    });
+          variants: {
+            where: {
+              clinicalSignificance: { in: ['Pathogenic', 'Likely pathogenic'] }
+            },
+            select: { id: true }
+          }
+        },
+        skip,
+        take: limit,
+        orderBy: sortBy === 'variantCount' 
+          ? { variants: { _count: sortOrder } }
+          : { [sortBy || 'symbol']: sortOrder }
+      })
+    ]);
 
-    // Formattazione response
+    // Format response with proper typing
     const formattedGenes = genes.map((gene: any) => ({
       id: gene.id,
       gene_id: gene.geneId,
@@ -101,28 +95,38 @@ export async function GET(request: NextRequest) {
       updated_at: gene.updatedAt
     }));
 
-    // Metadati paginazione
-    const totalPages = Math.ceil(totalCount / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
+    const totalPages = Math.ceil(totalCount / limit);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       status: 'success',
       data: formattedGenes,
       meta: {
         total: totalCount,
-        page: pageNum,
-        limit: limitNum,
+        page,
+        limit,
         totalPages,
-        hasNextPage,
-        hasPrevPage
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
       }
     });
+
+    return addSecurityHeaders(response);
+
   } catch (error) {
     console.error('Error fetching genes:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
+    
+    const response = NextResponse.json(
+      { 
+        error: 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && {
+          details: error instanceof Error ? error.message : 'Unknown error'
+        })
+      },
       { status: 500 }
     );
+
+    return addSecurityHeaders(response);
   }
 }
+
+export const GET = withRateLimit('api')(getGenesHandler);

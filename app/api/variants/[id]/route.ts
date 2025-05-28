@@ -1,12 +1,10 @@
-// app/api/variants/[id]/route.ts - FIX async params e implementazione completa
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { z } from 'zod';
+import { withRateLimit } from '@/lib/rate-limit-simple';
+import { addSecurityHeaders } from '@/lib/validation';
 
-const uuidSchema = z.string().uuid();
-
-export async function GET(
+async function getVariantHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -16,17 +14,15 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // FIX: Await params before accessing properties
     const resolvedParams = await params;
     const variantId = resolvedParams.id;
 
-    // Validazione ID - accetta sia UUID che variant_id
-    const isValidUUID = uuidSchema.safeParse(variantId).success;
+    // Check if it's a UUID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variantId);
     
     let variant;
     
-    if (isValidUUID) {
-      // Query per UUID
+    if (isUUID) {
       variant = await prisma.variant.findUnique({
         where: { id: variantId },
         include: {
@@ -51,7 +47,6 @@ export async function GET(
         }
       });
     } else {
-      // Query per variant_id come fallback
       variant = await prisma.variant.findFirst({
         where: { variantId: variantId },
         include: {
@@ -84,7 +79,7 @@ export async function GET(
       );
     }
 
-    // Get related variants from the same gene
+    // Get related variants
     const relatedVariants = await prisma.variant.findMany({
       where: {
         geneId: variant.geneId,
@@ -104,7 +99,6 @@ export async function GET(
       }
     });
 
-    // Format response
     const formattedVariant = {
       id: variant.id,
       variant_id: variant.variantId,
@@ -154,15 +148,28 @@ export async function GET(
       }))
     };
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       status: 'success',
       data: formattedVariant
     });
+
+    return addSecurityHeaders(response);
+
   } catch (error) {
     console.error('Error fetching variant details:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    const response = NextResponse.json(
+      { 
+        error: 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && {
+          details: error instanceof Error ? error.message : 'Unknown error'
+        })
+      },
       { status: 500 }
     );
+
+    return addSecurityHeaders(response);
   }
 }
+
+export const GET = withRateLimit('api')(getVariantHandler);
