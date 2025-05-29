@@ -1,89 +1,63 @@
 // app/api/health/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { HealthChecker } from '@/lib/health-checks';
+import { withRateLimit } from '@/lib/rate-limit-simple';
+import { addSecurityHeaders } from '@/lib/validation';
 
-export async function GET(request: NextRequest) {
+async function healthHandler(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // Check database connectivity
-    const dbStart = Date.now();
-    await prisma.$queryRaw`SELECT 1`;
-    const dbTime = Date.now() - dbStart;
-
-    // Check system resources
-    const memoryUsage = process.memoryUsage();
-    const uptime = process.uptime();
-
-    // Get basic stats
-    const [geneCount, variantCount] = await Promise.all([
-      prisma.gene.count(),
-      prisma.variant.count()
-    ]);
-
-    const responseTime = Date.now() - startTime;
-
-    const healthData = {
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
-      uptime: Math.floor(uptime),
-      performance: {
-        responseTime: `${responseTime}ms`,
-        dbResponseTime: `${dbTime}ms`,
-      },
-      database: {
-        status: 'connected',
-        genes: geneCount,
-        variants: variantCount,
-      },
-      memory: {
-        rss: `${Math.round(memoryUsage.rss / 1024 / 1024)}MB`,
-        heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
-        heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB`,
-        external: `${Math.round(memoryUsage.external / 1024 / 1024)}MB`,
-      },
-      checks: {
-        database: dbTime < 1000 ? 'healthy' : 'slow',
-        memory: memoryUsage.heapUsed / memoryUsage.heapTotal < 0.9 ? 'healthy' : 'high',
-        response: responseTime < 500 ? 'healthy' : 'slow',
-      }
-    };
-
-    // Determine overall health status
-    const hasUnhealthyChecks = Object.values(healthData.checks).some(
-      status => status !== 'healthy'
-    );
-
-    if (hasUnhealthyChecks) {
-      healthData.status = 'degraded';
+    // Get comprehensive system health
+    const systemHealth = await HealthChecker.getSystemHealth();
+    
+    // Determine HTTP status code based on health status
+    let statusCode = 200;
+    if (systemHealth.status === 'degraded') {
+      statusCode = 200; // Still return 200 for degraded but include warning
+    } else if (systemHealth.status === 'unhealthy') {
+      statusCode = 503; // Service Unavailable
     }
 
-    return NextResponse.json(healthData, {
-      status: hasUnhealthyChecks ? 200 : 200,
+    const response = NextResponse.json(systemHealth, {
+      status: statusCode,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
+        'X-Health-Check-Duration': `${Date.now() - startTime}ms`,
       },
     });
 
+    return addSecurityHeaders(response);
+
   } catch (error) {
-    console.error('Health check failed:', error);
+    console.error('Health check endpoint failed:', error);
     
-    return NextResponse.json({
+    const errorResponse = {
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Unknown error',
-      performance: {
-        responseTime: `${Date.now() - startTime}ms`,
-      }
-    }, {
+      error: error instanceof Error ? error.message : 'Health check failed',
+      version: process.env.npm_package_version || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      uptime: Math.floor(process.uptime()),
+      metrics: {
+        responseTime: Date.now() - startTime,
+        memoryUsage: process.memoryUsage(),
+      },
+    };
+
+    const response = NextResponse.json(errorResponse, {
       status: 503,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'X-Health-Check-Duration': `${Date.now() - startTime}ms`,
       },
     });
+
+    return addSecurityHeaders(response);
   }
 }
+
+// Apply light rate limiting for health checks
+export const GET = withRateLimit('api')(healthHandler);
