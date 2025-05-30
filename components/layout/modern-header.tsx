@@ -28,6 +28,7 @@ import { useTheme } from '@/components/theme-provider';
 import { GlobalSearch } from '@/components/global-search';
 import { useDebounce } from '@/hooks/use-debounce';
 import { signOut } from 'next-auth/react';
+import { UserRoleIndicator } from '../user-role-indicator';
 
 interface SearchResult {
   id: string;
@@ -231,7 +232,9 @@ export function ModernHeader() {
                 </div>
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-medium">{session.user?.name}</p>
-                  <p className="text-xs text-muted-foreground">{session.user?.role?.name}</p>
+                  <div className="flex items-center gap-1">
+                    <UserRoleIndicator />
+                  </div>
                 </div>
                 <ChevronDown className="h-4 w-4" />
               </Button>
@@ -242,9 +245,9 @@ export function ModernHeader() {
                   <div className="p-3 border-b">
                     <p className="font-medium">{session.user?.name}</p>
                     <p className="text-sm text-muted-foreground">{session.user?.email}</p>
-                    <Badge variant="secondary" className="mt-1 text-xs">
-                      {session.user?.role?.name}
-                    </Badge>
+                    <div className="mt-2">
+                      <UserRoleIndicator />
+                    </div>
                   </div>
                   <div className="p-1">
                     <Button 

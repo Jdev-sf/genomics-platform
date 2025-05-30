@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   experimental: {
     // Enable optimizations
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+    optimizeCss: true,
   },
   
   // Performance optimizations
@@ -85,7 +86,7 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // Webpack configuration for PWA
+  // Webpack configuration for PWA and chunk stability
   webpack: (config, { dev, isServer }) => {
     // Service Worker handling
     if (!dev && !isServer) {
@@ -93,6 +94,36 @@ const nextConfig: NextConfig = {
         ...config.resolve.fallback,
         fs: false,
       };
+    }
+
+    // Improve chunk stability in development
+    if (dev && !isServer) {
+      config.optimization.splitChunks = {
+        chunks: 'all',
+        cacheGroups: {
+          default: {
+            minChunks: 1,
+            priority: -20,
+            reuseExistingChunk: true,
+          },
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            priority: -10,
+            chunks: 'all',
+          },
+          // Separate chunk for large UI libraries
+          ui: {
+            test: /[\\/]node_modules[\\/](@radix-ui|lucide-react|recharts)[\\/]/,
+            name: 'ui-vendor',
+            priority: 10,
+            chunks: 'all',
+          },
+        },
+      };
+
+      // Prevent chunk load errors in development
+      config.output.chunkLoadTimeout = 30000;
     }
 
     // Bundle analyzer in development
@@ -123,6 +154,26 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // TypeScript configuration
+  typescript: {
+    // Ignore build errors in development
+    ignoreBuildErrors: false,
+  },
+
+  // ESLint configuration
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
+
+  // React strict mode
+  reactStrictMode: true,
+
+  // Output configuration for better caching
+  // Generate standalone output for Docker deployment in production
+  ...(process.env.NODE_ENV === 'production' && {
+    output: 'standalone',
+  }),
 };
 
 export default nextConfig;

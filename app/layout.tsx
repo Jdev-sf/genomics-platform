@@ -100,12 +100,39 @@ export const viewport: Viewport = {
   colorScheme: 'light dark',
 };
 
-// PWA install prompt component
+// PWA install prompt component with chunk error handler
 function PWAInstallPrompt() {
   return (
     <script
       dangerouslySetInnerHTML={{
         __html: `
+          // Chunk Load Error Handler
+          window.addEventListener('unhandledrejection', (event) => {
+            if (
+              event.reason &&
+              event.reason.message &&
+              (event.reason.message.includes('ChunkLoadError') ||
+               event.reason.message.includes('Loading chunk') ||
+               event.reason.message.includes('Loading CSS chunk'))
+            ) {
+              console.warn('Chunk load error detected, reloading page...');
+              event.preventDefault();
+              window.location.reload();
+            }
+          });
+
+          // Handle dynamic import errors
+          window.addEventListener('error', (event) => {
+            if (
+              event.message &&
+              (event.message.includes('Loading chunk') ||
+               event.message.includes('ChunkLoadError'))
+            ) {
+              console.warn('Dynamic import chunk error, reloading...');
+              window.location.reload();
+            }
+          });
+
           // PWA install prompt
           let deferredPrompt;
           window.addEventListener('beforeinstallprompt', (e) => {

@@ -1,3 +1,4 @@
+// lib/auth.ts
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@auth/prisma-adapter';
@@ -69,8 +70,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      // Handle callback URLs
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`;
+      }
+      // Handle external URLs
+      if (new URL(url).origin === baseUrl) {
+        return url;
+      }
+      return baseUrl;
+    },
   },
   pages: {
     signIn: '/auth/login',
+  },
+  events: {
+    async signIn({ user }) {
+      // Log successful sign-ins
+      console.log(`User ${user.email} signed in`);
+    },
+    async signOut() {
+      // Log sign-outs
+      console.log(`User signed out`);
+    },
   },
 });
