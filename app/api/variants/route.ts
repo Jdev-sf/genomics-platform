@@ -1,11 +1,12 @@
+// app/api/variants/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
+import { getVariantService } from '@/lib/container/service-registry';
+import { validateRequest, paginationSchema, addSecurityHeaders } from '@/lib/validation';
+import { createPaginatedResponse } from '@/lib/utils/serialization';
 import { z } from 'zod';
 
-const querySchema = z.object({
-  page: z.string().optional().default('1'),
-  limit: z.string().optional().default('20'),
+const variantsQuerySchema = paginationSchema.extend({
   search: z.string().optional(),
   geneId: z.string().optional(),
   chromosome: z.string().optional(),
@@ -13,164 +14,110 @@ const querySchema = z.object({
   impact: z.string().optional(),
   minFrequency: z.string().optional(),
   maxFrequency: z.string().optional(),
-  sortBy: z.enum(['position', 'gene', 'clinicalSignificance', 'impact', 'frequency']).optional().default('position'),
-  sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
+  consequence: z.string().optional(),
 });
 
-export async function GET(request: NextRequest) {
+async function getVariantsHandler(request: NextRequest) {
+  const requestId = request.headers.get('x-request-id') || undefined;
+
   try {
-    const session = await auth();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const searchParams = request.nextUrl.searchParams;
-    const queryResult = querySchema.safeParse({
-      page: searchParams.get('page') || undefined,
-      limit: searchParams.get('limit') || undefined,
-      search: searchParams.get('search') || undefined,
-      geneId: searchParams.get('geneId') || undefined,
-      chromosome: searchParams.get('chromosome') || undefined,
-      clinicalSignificance: searchParams.get('clinicalSignificance') || undefined,
-      impact: searchParams.get('impact') || undefined,
-      minFrequency: searchParams.get('minFrequency') || undefined,
-      maxFrequency: searchParams.get('maxFrequency') || undefined,
-      sortBy: searchParams.get('sortBy') || undefined,
-      sortOrder: searchParams.get('sortOrder') || undefined,
-    });
-
-    if (!queryResult.success) {
+    // Validation
+    const validation = await validateRequest(request, variantsQuerySchema, 'query');
+    if (validation.error) {
       return NextResponse.json(
-        { error: 'Invalid query parameters', details: queryResult.error.errors },
-        { status: 400 }
+        { error: validation.error },
+        { status: validation.status || 400 }
       );
     }
 
-    const { 
-      page, 
-      limit, 
-      search, 
-      geneId,
-      chromosome, 
+    const data = validation.data!;
+
+    // Parse arrays and numbers from query params
+    const clinicalSignificance = data.clinicalSignificance 
+      ? data.clinicalSignificance.split(',') 
+      : undefined;
+    const impact = data.impact 
+      ? data.impact.split(',') 
+      : undefined;
+    const minFrequency = data.minFrequency 
+      ? parseFloat(data.minFrequency) 
+      : undefined;
+    const maxFrequency = data.maxFrequency 
+      ? parseFloat(data.maxFrequency) 
+      : undefined;
+
+    // Get service
+    const variantService = await getVariantService();
+
+    // Execute business logic
+    const result = await variantService.searchVariants({
+      search: data.search,
+      geneId: data.geneId,
+      chromosome: data.chromosome,
       clinicalSignificance,
       impact,
       minFrequency,
       maxFrequency,
-      sortBy, 
-      sortOrder 
-    } = queryResult.data;
-    
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const skip = (pageNum - 1) * limitNum;
+      consequence: data.consequence,
+      page: data.page,
+      limit: data.limit,
+      sortBy: data.sortBy,
+      sortOrder: data.sortOrder,
+    }, requestId);
 
-    // Build filters
-    const where: any = {};
-    
-    if (search) {
-      where.OR = [
-        { variantId: { contains: search, mode: 'insensitive' } },
-        { proteinChange: { contains: search, mode: 'insensitive' } },
-        { gene: { symbol: { contains: search, mode: 'insensitive' } } },
-      ];
-    }
-
-    if (geneId) {
-      where.geneId = geneId;
-    }
-
-    if (chromosome) {
-      where.chromosome = chromosome;
-    }
-
-    if (clinicalSignificance) {
-      where.clinicalSignificance = clinicalSignificance;
-    }
-
-    if (impact) {
-      where.impact = impact;
-    }
-
-    if (minFrequency || maxFrequency) {
-      where.frequency = {};
-      if (minFrequency) {
-        where.frequency.gte = parseFloat(minFrequency);
-      }
-      if (maxFrequency) {
-        where.frequency.lte = parseFloat(maxFrequency);
-      }
-    }
-
-    // Get total count
-    const totalCount = await prisma.variant.count({ where });
-
-    // Get variants with related data
-    const variants = await prisma.variant.findMany({
-      where,
-      include: {
-        gene: {
-          select: {
-            id: true,
-            symbol: true,
-            name: true,
-          }
-        },
-        _count: {
-          select: { annotations: true }
+    // AGGRESSIVE BigInt conversion
+    const safeBigIntConvert = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      if (typeof obj === 'bigint') return obj.toString();
+      if (obj instanceof Date) return obj.toISOString();
+      if (Array.isArray(obj)) return obj.map(safeBigIntConvert);
+      if (typeof obj === 'object') {
+        const converted: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+          converted[key] = safeBigIntConvert(value);
         }
-      },
-      skip,
-      take: limitNum,
-      orderBy: sortBy === 'gene' 
-        ? { gene: { symbol: sortOrder } }
-        : { [sortBy]: sortOrder }
-    });
+        return converted;
+      }
+      return obj;
+    };
+
+    // Convert everything
+    const safeResult = safeBigIntConvert(result);
+
+    // Create response object manually
+    const responseData = {
+      status: 'success',
+      data: safeResult.data,
+      meta: safeResult.meta
+    };
+
+    // Test JSON.stringify before sending to NextResponse
+    try {
+      const testJson = JSON.stringify(responseData);
+      console.log('Variants JSON.stringify test passed, length:', testJson.length);
+    } catch (jsonError) {
+      console.error('Variants JSON.stringify test failed:', jsonError);
+      throw new Error('Data contains non-serializable values');
+    }
 
     // Format response
-    const formattedVariants = variants.map((variant: any) => ({
-      id: variant.id,
-      variant_id: variant.variantId,
-      gene: {
-        id: variant.gene.id,
-        symbol: variant.gene.symbol,
-        name: variant.gene.name,
-      },
-      chromosome: variant.chromosome,
-      position: variant.position.toString(),
-      reference_allele: variant.referenceAllele,
-      alternate_allele: variant.alternateAllele,
-      variant_type: variant.variantType,
-      consequence: variant.consequence,
-      impact: variant.impact,
-      protein_change: variant.proteinChange,
-      clinical_significance: variant.clinicalSignificance,
-      frequency: variant.frequency,
-      annotations_count: variant._count.annotations,
-      created_at: variant.createdAt,
-      updated_at: variant.updatedAt
-    }));
+    const response = NextResponse.json(responseData);
 
-    const totalPages = Math.ceil(totalCount / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
+    return addSecurityHeaders(response);
 
-    return NextResponse.json({
-      status: 'success',
-      data: formattedVariants,
-      meta: {
-        total: totalCount,
-        page: pageNum,
-        limit: limitNum,
-        totalPages,
-        hasNextPage,
-        hasPrevPage
-      }
-    });
   } catch (error) {
-    console.error('Error fetching variants:', error);
+    console.error('Error in getVariantsHandler:', error);
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        requestId 
+      },
       { status: 500 }
     );
   }
 }
+
+const middlewareChain = createApiMiddlewareChain();
+export const GET = withMiddlewareChain(middlewareChain, getVariantsHandler);

@@ -6,6 +6,9 @@ import { Toaster } from '@/components/ui/toaster';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ThemeScript } from '@/components/theme-script';
 
+// Initialize BigInt serialization fix
+import '@/lib/setup-bigint-serialization';
+
 // Initialize monitoring system
 if (typeof window === 'undefined') {
   // Server-side only

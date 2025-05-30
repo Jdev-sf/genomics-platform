@@ -1,130 +1,53 @@
+// app/api/variants/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
-import { withRateLimit } from '@/lib/rate-limit-simple';
+import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
+import { getVariantService } from '@/lib/container/service-registry';
 import { addSecurityHeaders } from '@/lib/validation';
 
-async function getVariantHandler(
+async function getVariantByIdHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
+  const requestId = request.headers.get('x-request-id') || undefined;
+
+  // Get service
+  const variantService = await getVariantService();
+
   try {
-    const session = await auth();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Execute business logic
+    const result = await variantService.getVariantWithDetails(
+      resolvedParams.id,
+      requestId
+    );
 
-    const resolvedParams = await params;
-    const variantId = resolvedParams.id;
-
-    // Check if it's a UUID
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variantId);
-    
-    let variant;
-    
-    if (isUUID) {
-      variant = await prisma.variant.findUnique({
-        where: { id: variantId },
-        include: {
-          gene: {
-            select: {
-              id: true,
-              geneId: true,
-              symbol: true,
-              name: true,
-              chromosome: true,
-              description: true,
-            }
-          },
-          annotations: {
-            include: {
-              source: true
-            },
-            orderBy: {
-              createdAt: 'desc'
-            }
-          }
-        }
-      });
-    } else {
-      variant = await prisma.variant.findFirst({
-        where: { variantId: variantId },
-        include: {
-          gene: {
-            select: {
-              id: true,
-              geneId: true,
-              symbol: true,
-              name: true,
-              chromosome: true,
-              description: true,
-            }
-          },
-          annotations: {
-            include: {
-              source: true
-            },
-            orderBy: {
-              createdAt: 'desc'
-            }
-          }
-        }
-      });
-    }
-
-    if (!variant) {
-      return NextResponse.json(
-        { error: 'Variant not found' },
-        { status: 404 }
-      );
-    }
-
-    // Get related variants
-    const relatedVariants = await prisma.variant.findMany({
-      where: {
-        geneId: variant.geneId,
-        id: { not: variant.id },
-        clinicalSignificance: variant.clinicalSignificance
-      },
-      select: {
-        id: true,
-        variantId: true,
-        position: true,
-        consequence: true,
-        clinicalSignificance: true,
-      },
-      take: 5,
-      orderBy: {
-        position: 'asc'
-      }
-    });
-
+    // Format detailed response matching the expected structure
     const formattedVariant = {
-      id: variant.id,
-      variant_id: variant.variantId,
+      id: result.variant.id,
+      variant_id: result.variant.variantId,
       gene: {
-        id: variant.gene.id,
-        gene_id: variant.gene.geneId,
-        symbol: variant.gene.symbol,
-        name: variant.gene.name,
-        chromosome: variant.gene.chromosome,
-        description: variant.gene.description,
+        id: result.variant.gene.id,
+        gene_id: result.variant.gene.geneId,
+        symbol: result.variant.gene.symbol,
+        name: result.variant.gene.name,
+        chromosome: result.variant.gene.chromosome,
+        description: result.variant.gene.description,
       },
-      chromosome: variant.chromosome,
-      position: variant.position.toString(),
-      reference_allele: variant.referenceAllele,
-      alternate_allele: variant.alternateAllele,
-      variant_type: variant.variantType,
-      consequence: variant.consequence,
-      impact: variant.impact,
-      protein_change: variant.proteinChange,
-      transcript_id: variant.transcriptId,
-      frequency: variant.frequency,
-      clinical_significance: variant.clinicalSignificance,
-      metadata: variant.metadata,
-      created_at: variant.createdAt,
-      updated_at: variant.updatedAt,
-      annotations: variant.annotations.map(annotation => ({
+      chromosome: result.variant.chromosome,
+      position: result.variant.position.toString(),
+      reference_allele: result.variant.referenceAllele,
+      alternate_allele: result.variant.alternateAllele,
+      variant_type: result.variant.variantType,
+      consequence: result.variant.consequence,
+      impact: result.variant.impact,
+      protein_change: result.variant.proteinChange,
+      transcript_id: result.variant.transcriptId,
+      frequency: result.variant.frequency,
+      clinical_significance: result.variant.clinicalSignificance,
+      metadata: result.variant.metadata,
+      created_at: result.variant.createdAt,
+      updated_at: result.variant.updatedAt,
+      annotations: result.variant.annotations?.map((annotation: any) => ({
         id: annotation.id,
         source: {
           id: annotation.source.id,
@@ -138,8 +61,8 @@ async function getVariantHandler(
         evidence_level: annotation.evidenceLevel,
         created_at: annotation.createdAt,
         updated_at: annotation.updatedAt,
-      })),
-      related_variants: relatedVariants.map(v => ({
+      })) || [],
+      related_variants: result.relatedVariants.map(v => ({
         id: v.id,
         variant_id: v.variantId,
         position: v.position.toString(),
@@ -156,20 +79,10 @@ async function getVariantHandler(
     return addSecurityHeaders(response);
 
   } catch (error) {
-    console.error('Error fetching variant details:', error);
-    
-    const response = NextResponse.json(
-      { 
-        error: 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && {
-          details: error instanceof Error ? error.message : 'Unknown error'
-        })
-      },
-      { status: 500 }
-    );
-
-    return addSecurityHeaders(response);
+    // Error handling is done by middleware chain
+    throw error;
   }
 }
 
-export const GET = withRateLimit('api')(getVariantHandler);
+const middlewareChain = createApiMiddlewareChain();
+export const GET = withMiddlewareChain(middlewareChain, getVariantByIdHandler);

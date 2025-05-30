@@ -1,7 +1,7 @@
-// lib/validation.ts
+// lib/validation.ts - Updated addSecurityHeaders function
 import { z } from 'zod';
 import DOMPurify from 'isomorphic-dompurify';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 // Basic string sanitization
 function sanitizeString(val: string): string {
@@ -221,8 +221,8 @@ export const CSP_HEADERS = {
   'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
 };
 
-// Apply security headers to response
-export function addSecurityHeaders(response: Response): Response {
+// Apply security headers to response - FIXED VERSION
+export function addSecurityHeaders(response: NextResponse): NextResponse {
   Object.entries(CSP_HEADERS).forEach(([key, value]) => {
     response.headers.set(key, value);
   });

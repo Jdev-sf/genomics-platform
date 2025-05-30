@@ -295,9 +295,21 @@ export async function withErrorBoundary<T>(
   }
 }
 
-// Process-level error handlers
+// Process-level error handlers - FIXED to prevent multiple listeners
+let globalErrorHandlersSetup = false;
+
 export function setupGlobalErrorHandlers() {
+  if (globalErrorHandlersSetup) {
+    console.log('Global error handlers already setup, skipping...');
+    return;
+  }
+
+  console.log('Setting up global error handlers...');
+  
   const logger = createLogger({ requestId: 'global' });
+
+  // Set higher max listeners to prevent warnings during development
+  process.setMaxListeners(20);
 
   // Handle uncaught exceptions
   process.on('uncaughtException', (error: Error) => {
@@ -323,7 +335,7 @@ export function setupGlobalErrorHandlers() {
     }
   });
 
-  // Handle termination signals
+  // Handle termination signals - FIXED: Only set once
   const gracefulShutdown = (signal: string) => {
     logger.info(`Received ${signal} - starting graceful shutdown`, {
       type: 'shutdown',
@@ -337,6 +349,22 @@ export function setupGlobalErrorHandlers() {
     }, 5000); // Give 5 seconds for cleanup
   };
 
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  // Check if listeners are already registered
+  const sigtermListeners = process.listenerCount('SIGTERM');
+  const sigintListeners = process.listenerCount('SIGINT');
+  
+  console.log(`Current SIGTERM listeners: ${sigtermListeners}, SIGINT listeners: ${sigintListeners}`);
+
+  if (sigtermListeners === 0) {
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    console.log('SIGTERM listener added');
+  }
+  
+  if (sigintListeners === 0) {
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    console.log('SIGINT listener added');
+  }
+
+  globalErrorHandlersSetup = true;
+  console.log('Global error handlers setup completed');
 }

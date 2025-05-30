@@ -1,4 +1,4 @@
-// lib/vcf-parser.ts - VCF Parser Infrastructure
+// lib/vcf-parser.ts
 import { z } from 'zod';
 
 // VCF Record Schema
@@ -249,8 +249,8 @@ export class VCFParser {
     return 'COMPLEX';
   }
 
-  private static extractFrequency(info?: Record<string, any>): number | null {
-    if (!info) return null;
+  private static extractFrequency(info?: Record<string, any>): number | undefined {
+    if (!info) return undefined;
     
     // Common frequency fields in VCF
     const freqFields = ['AF', 'MAF', 'FREQ'];
@@ -261,17 +261,17 @@ export class VCFParser {
       }
     }
     
-    return null;
+    return undefined;
   }
 
-  private static extractClinicalSignificance(info?: Record<string, any>): string | null {
-    if (!info) return null;
+  private static extractClinicalSignificance(info?: Record<string, any>): string | undefined {
+    if (!info) return undefined;
     
     // ClinVar clinical significance
     if (info.CLNSIG) {
       return info.CLNSIG;
     }
     
-    return null;
+    return undefined;
   }
 }

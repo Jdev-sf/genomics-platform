@@ -24,7 +24,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
-import { LazyTable } from '@/components/lazy-table';
 import { ModernHeader } from '@/components/layout/modern-header';
 
 interface Gene {
@@ -32,23 +31,29 @@ interface Gene {
   symbol: string;
   name: string;
   chromosome: string;
-  startPosition: number;
-  endPosition: number;
+  startPosition: string | null;
+  endPosition: string | null;
   strand: string;
   biotype: string;
   description: string;
   variantCount: number;
-  pathogenicVariantCount: number;
+  pathogenicCount: number;
   createdAt: string;
   updatedAt: string;
 }
 
 interface GenesResponse {
+  error: string;
+  status: string;
   data: Gene[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
 }
 
 export default function GenesPage() {
@@ -63,6 +68,7 @@ export default function GenesPage() {
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
   const [pageSize] = useState(parseInt(searchParams.get('pageSize') || '25'));
   const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'symbol');
   const [sortOrder, setSortOrder] = useState(searchParams.get('sortOrder') || 'asc');
 
@@ -86,7 +92,7 @@ export default function GenesPage() {
     try {
       const params = new URLSearchParams({
         page: page.toString(),
-        pageSize: pageSize.toString(),
+        limit: pageSize.toString(),
         sortBy,
         sortOrder,
         ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
@@ -94,18 +100,32 @@ export default function GenesPage() {
       });
 
       const response = await fetch(`/api/genes?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch genes');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
 
       const data: GenesResponse = await response.json();
-      setGenes(data.data);
-      setTotal(data.total);
+      
+      if (data.status !== 'success') {
+        throw new Error(data.error || 'API returned error status');
+      }
+
+      setGenes(data.data || []);
+      setTotal(data.meta?.total || 0);
+      setTotalPages(data.meta?.totalPages || 0);
+
     } catch (error) {
       console.error('Error fetching genes:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch genes. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to fetch genes. Please try again.',
         variant: 'destructive',
       });
+      setGenes([]);
+      setTotal(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
@@ -163,8 +183,6 @@ export default function GenesPage() {
                    '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y'];
     return chroms;
   }, []);
-
-  const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
@@ -239,7 +257,7 @@ export default function GenesPage() {
                     <SelectItem value="symbol-desc">Symbol (Z-A)</SelectItem>
                     <SelectItem value="variantCount-desc">Most variants</SelectItem>
                     <SelectItem value="variantCount-asc">Least variants</SelectItem>
-                    <SelectItem value="pathogenicVariantCount-desc">Most pathogenic</SelectItem>
+                    <SelectItem value="pathogenicCount-desc">Most pathogenic</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -283,7 +301,7 @@ export default function GenesPage() {
                 {loading ? (
                   'Loading...'
                 ) : (
-                  `${(total || 0).toLocaleString()} genes found`
+                  `${total.toLocaleString()} genes found`
                 )}
               </CardTitle>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -324,9 +342,9 @@ export default function GenesPage() {
                         </TableHead>
                         <TableHead 
                           className="cursor-pointer select-none text-right"
-                          onClick={() => handleSort('pathogenicVariantCount')}
+                          onClick={() => handleSort('pathogenicCount')}
                         >
-                          Pathogenic {sortBy === 'pathogenicVariantCount' && (sortOrder === 'asc' ? '↑' : '↓')}
+                          Pathogenic {sortBy === 'pathogenicCount' && (sortOrder === 'asc' ? '↑' : '↓')}
                         </TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -353,15 +371,15 @@ export default function GenesPage() {
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="font-mono text-xs">
-                              Chr {gene.chromosome}:{(gene.startPosition || 0).toLocaleString()}-{(gene.endPosition || 0).toLocaleString()}
+                              Chr {gene.chromosome}:{gene.startPosition ? parseInt(gene.startPosition).toLocaleString() : 'N/A'}-{gene.endPosition ? parseInt(gene.endPosition).toLocaleString() : 'N/A'}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {(gene.variantCount || 0).toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right">
-                            <span className={`font-mono ${(gene.pathogenicVariantCount || 0) > 0 ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
-                              {(gene.pathogenicVariantCount || 0).toLocaleString()}
+                            <span className={`font-mono ${(gene.pathogenicCount || 0) > 0 ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
+                              {(gene.pathogenicCount || 0).toLocaleString()}
                             </span>
                           </TableCell>
                           <TableCell className="text-right">
@@ -385,7 +403,7 @@ export default function GenesPage() {
                 {/* Pagination */}
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {(total || 0).toLocaleString()} genes
+                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {total.toLocaleString()} genes
                   </div>
                   <div className="flex items-center space-x-2">
                     <Button

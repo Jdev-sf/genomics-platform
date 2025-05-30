@@ -24,36 +24,53 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
-import { LazyTable } from '@/components/lazy-table';
 import { ModernHeader } from '@/components/layout/modern-header';
 
 interface Variant {
   id: string;
   variantId: string;
-  geneSymbol: string;
-  geneName: string;
+  gene: {
+    id: string;
+    symbol: string;
+    name: string;
+    chromosome: string;
+  };
   chromosome: string;
-  position: number;
+  position: string;
   referenceAllele: string;
   alternateAllele: string;
   variantType: string;
   consequence: string;
   impact: string;
-  proteinChange: string | null;
-  transcriptId: string;
-  frequency: number | null;
+  proteinChange: string;
+  frequency: number;
   clinicalSignificance: string;
   createdAt: string;
   updatedAt: string;
+  annotationsCount: number;
 }
 
 interface VariantsResponse {
+  error: string;
+  status: string;
   data: Variant[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
 }
+
+const clinicalSignificanceColors: Record<string, string> = {
+  'Pathogenic': 'bg-red-100 text-red-800 border-red-200',
+  'Likely pathogenic': 'bg-orange-100 text-orange-800 border-orange-200',
+  'Uncertain significance': 'bg-gray-100 text-gray-800 border-gray-200',
+  'Likely benign': 'bg-green-100 text-green-800 border-green-200',
+  'Benign': 'bg-green-100 text-green-800 border-green-200',
+};
 
 export default function VariantsPage() {
   const router = useRouter();
@@ -64,11 +81,12 @@ export default function VariantsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [chromosome, setChromosome] = useState(searchParams.get('chromosome') || 'all');
-  const [clinicalSignificance, setClinicalSignificance] = useState(searchParams.get('clinicalSignificance') || 'all');
-  const [consequence, setConsequence] = useState(searchParams.get('consequence') || 'all');
+  const [clinicalSig, setClinicalSig] = useState(searchParams.get('clinicalSignificance') || 'all');
+  const [impact, setImpact] = useState(searchParams.get('impact') || 'all');
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
   const [pageSize] = useState(parseInt(searchParams.get('pageSize') || '25'));
   const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'position');
   const [sortOrder, setSortOrder] = useState(searchParams.get('sortOrder') || 'asc');
 
@@ -78,8 +96,8 @@ export default function VariantsPage() {
     const params = new URLSearchParams();
     if (debouncedSearchQuery) params.set('search', debouncedSearchQuery);
     if (chromosome && chromosome !== 'all') params.set('chromosome', chromosome);
-    if (clinicalSignificance && clinicalSignificance !== 'all') params.set('clinicalSignificance', clinicalSignificance);
-    if (consequence && consequence !== 'all') params.set('consequence', consequence);
+    if (clinicalSig && clinicalSig !== 'all') params.set('clinicalSignificance', clinicalSig);
+    if (impact && impact !== 'all') params.set('impact', impact);
     if (page > 1) params.set('page', page.toString());
     if (pageSize !== 25) params.set('pageSize', pageSize.toString());
     if (sortBy !== 'position') params.set('sortBy', sortBy);
@@ -87,39 +105,53 @@ export default function VariantsPage() {
 
     const newURL = `/variants${params.toString() ? '?' + params.toString() : ''}`;
     router.replace(newURL, { scroll: false });
-  }, [debouncedSearchQuery, chromosome, clinicalSignificance, consequence, page, pageSize, sortBy, sortOrder, router]);
+  }, [debouncedSearchQuery, chromosome, clinicalSig, impact, page, pageSize, sortBy, sortOrder, router]);
 
   const fetchVariants = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         page: page.toString(),
-        pageSize: pageSize.toString(),
+        limit: pageSize.toString(),
         sortBy,
         sortOrder,
         ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
         ...(chromosome && chromosome !== 'all' && { chromosome }),
-        ...(clinicalSignificance && clinicalSignificance !== 'all' && { clinicalSignificance }),
-        ...(consequence && consequence !== 'all' && { consequence }),
+        ...(clinicalSig && clinicalSig !== 'all' && { clinicalSignificance: clinicalSig }),
+        ...(impact && impact !== 'all' && { impact }),
       });
 
       const response = await fetch(`/api/variants?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch variants');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
 
       const data: VariantsResponse = await response.json();
-      setVariants(data.data);
-      setTotal(data.total);
+      
+      if (data.status !== 'success') {
+        throw new Error(data.error || 'API returned error status');
+      }
+
+      setVariants(data.data || []);
+      setTotal(data.meta?.total || 0);
+      setTotalPages(data.meta?.totalPages || 0);
+
     } catch (error) {
       console.error('Error fetching variants:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch variants. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to fetch variants. Please try again.',
         variant: 'destructive',
       });
+      setVariants([]);
+      setTotal(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearchQuery, chromosome, clinicalSignificance, consequence, sortBy, sortOrder, toast]);
+  }, [page, pageSize, debouncedSearchQuery, chromosome, clinicalSig, impact, sortBy, sortOrder, toast]);
 
   useEffect(() => {
     fetchVariants();
@@ -139,8 +171,8 @@ export default function VariantsPage() {
         format: 'csv',
         ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
         ...(chromosome && chromosome !== 'all' && { chromosome }),
-        ...(clinicalSignificance && clinicalSignificance !== 'all' && { clinicalSignificance }),
-        ...(consequence && consequence !== 'all' && { consequence }),
+        ...(clinicalSig && clinicalSig !== 'all' && { clinicalSignificance: clinicalSig }),
+        ...(impact && impact !== 'all' && { impact }),
       });
 
       const response = await fetch(`/api/variants/export?${params}`);
@@ -170,39 +202,6 @@ export default function VariantsPage() {
     }
   };
 
-  const getClinicalSignificanceBadge = (significance: string) => {
-    const normalizedSig = significance?.toLowerCase() || '';
-    if (normalizedSig.includes('pathogenic')) {
-      return normalizedSig.includes('likely') 
-        ? <Badge variant="secondary" className="bg-orange-100 text-orange-800">Likely Pathogenic</Badge>
-        : <Badge variant="destructive">Pathogenic</Badge>;
-    }
-    if (normalizedSig.includes('benign')) {
-      return normalizedSig.includes('likely')
-        ? <Badge variant="secondary" className="bg-green-100 text-green-800">Likely Benign</Badge>
-        : <Badge variant="secondary" className="bg-green-100 text-green-800">Benign</Badge>;
-    }
-    if (normalizedSig.includes('uncertain')) {
-      return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Uncertain</Badge>;
-    }
-    return <Badge variant="outline">{significance || 'Unknown'}</Badge>;
-  };
-
-  const getImpactBadge = (impact: string) => {
-    const impactColors = {
-      HIGH: 'bg-red-100 text-red-800',
-      MODERATE: 'bg-orange-100 text-orange-800',
-      LOW: 'bg-yellow-100 text-yellow-800',
-      MODIFIER: 'bg-gray-100 text-gray-800',
-    };
-    
-    return (
-      <Badge variant="secondary" className={impactColors[impact as keyof typeof impactColors] || 'bg-gray-100 text-gray-800'}>
-        {impact}
-      </Badge>
-    );
-  };
-
   const chromosomes = useMemo(() => {
     const chroms = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 
                    '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y'];
@@ -211,24 +210,13 @@ export default function VariantsPage() {
 
   const clinicalSignificanceOptions = [
     'Pathogenic',
-    'Likely Pathogenic',
+    'Likely pathogenic', 
     'Uncertain significance',
-    'Likely Benign',
+    'Likely benign',
     'Benign'
   ];
 
-  const consequenceOptions = [
-    'missense_variant',
-    'nonsense_variant',
-    'frameshift_variant',
-    'splice_site_variant',
-    'synonymous_variant',
-    'intron_variant',
-    'upstream_variant',
-    'downstream_variant'
-  ];
-
-  const totalPages = Math.ceil(total / pageSize);
+  const impactOptions = ['HIGH', 'MODERATE', 'LOW', 'MODIFIER'];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
@@ -262,7 +250,7 @@ export default function VariantsPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search variants or genes..."
+                    placeholder="Search variants..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
@@ -289,12 +277,12 @@ export default function VariantsPage() {
 
               <div>
                 <label className="text-sm font-medium mb-2 block">Clinical Significance</label>
-                <Select value={clinicalSignificance} onValueChange={setClinicalSignificance}>
+                <Select value={clinicalSig} onValueChange={setClinicalSig}>
                   <SelectTrigger>
-                    <SelectValue placeholder="All significances" />
+                    <SelectValue placeholder="All significance" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All significances</SelectItem>
+                    <SelectItem value="all">All significance</SelectItem>
                     {clinicalSignificanceOptions.map((sig) => (
                       <SelectItem key={sig} value={sig}>
                         {sig}
@@ -305,16 +293,16 @@ export default function VariantsPage() {
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Consequence</label>
-                <Select value={consequence} onValueChange={setConsequence}>
+                <label className="text-sm font-medium mb-2 block">Impact</label>
+                <Select value={impact} onValueChange={setImpact}>
                   <SelectTrigger>
-                    <SelectValue placeholder="All consequences" />
+                    <SelectValue placeholder="All impacts" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All consequences</SelectItem>
-                    {consequenceOptions.map((cons) => (
-                      <SelectItem key={cons} value={cons}>
-                        {cons.replace(/_/g, ' ')}
+                    <SelectItem value="all">All impacts</SelectItem>
+                    {impactOptions.map((imp) => (
+                      <SelectItem key={imp} value={imp}>
+                        {imp}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -322,7 +310,8 @@ export default function VariantsPage() {
               </div>
             </div>
 
-            {(debouncedSearchQuery || (chromosome && chromosome !== 'all') || (clinicalSignificance && clinicalSignificance !== 'all') || (consequence && consequence !== 'all')) && (
+            {(debouncedSearchQuery || (chromosome && chromosome !== 'all') || 
+              (clinicalSig && clinicalSig !== 'all') || (impact && impact !== 'all')) && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-muted-foreground">Active filters:</span>
                 {debouncedSearchQuery && (
@@ -347,22 +336,22 @@ export default function VariantsPage() {
                     </button>
                   </Badge>
                 )}
-                {clinicalSignificance && clinicalSignificance !== 'all' && (
+                {clinicalSig && clinicalSig !== 'all' && (
                   <Badge variant="secondary" className="gap-1">
-                    {clinicalSignificance}
+                    {clinicalSig}
                     <button
-                      onClick={() => setClinicalSignificance('all')}
+                      onClick={() => setClinicalSig('all')}
                       className="ml-1 hover:bg-background rounded-full"
                     >
                       ×
                     </button>
                   </Badge>
                 )}
-                {consequence && consequence !== 'all' && (
+                {impact && impact !== 'all' && (
                   <Badge variant="secondary" className="gap-1">
-                    {consequence.replace(/_/g, ' ')}
+                    {impact}
                     <button
-                      onClick={() => setConsequence('all')}
+                      onClick={() => setImpact('all')}
                       className="ml-1 hover:bg-background rounded-full"
                     >
                       ×
@@ -382,7 +371,7 @@ export default function VariantsPage() {
                 {loading ? (
                   'Loading...'
                 ) : (
-                  `${(total || 0).toLocaleString()} variants found`
+                  `${total.toLocaleString()} variants found`
                 )}
               </CardTitle>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -402,18 +391,8 @@ export default function VariantsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead 
-                          className="cursor-pointer select-none"
-                          onClick={() => handleSort('variantId')}
-                        >
-                          Variant ID {sortBy === 'variantId' && (sortOrder === 'asc' ? '↑' : '↓')}
-                        </TableHead>
-                        <TableHead 
-                          className="cursor-pointer select-none"
-                          onClick={() => handleSort('geneSymbol')}
-                        >
-                          Gene {sortBy === 'geneSymbol' && (sortOrder === 'asc' ? '↑' : '↓')}
-                        </TableHead>
+                        <TableHead>Variant ID</TableHead>
+                        <TableHead>Gene</TableHead>
                         <TableHead 
                           className="cursor-pointer select-none"
                           onClick={() => handleSort('position')}
@@ -421,9 +400,8 @@ export default function VariantsPage() {
                           Position {sortBy === 'position' && (sortOrder === 'asc' ? '↑' : '↓')}
                         </TableHead>
                         <TableHead>Change</TableHead>
-                        <TableHead>Consequence</TableHead>
-                        <TableHead>Impact</TableHead>
                         <TableHead>Clinical Significance</TableHead>
+                        <TableHead>Impact</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -435,39 +413,49 @@ export default function VariantsPage() {
                           onClick={() => router.push(`/variants/${variant.id}`)}
                         >
                           <TableCell className="font-mono text-sm">
-                            <span className="text-blue-600 hover:text-blue-800 font-semibold">
+                            <span className="text-blue-600 hover:text-blue-800">
                               {variant.variantId}
                             </span>
                           </TableCell>
                           <TableCell>
                             <div>
-                              <div className="font-medium text-blue-600">{variant.geneSymbol}</div>
-                              <div className="text-sm text-muted-foreground truncate max-w-32">
-                                {variant.geneName}
+                              <div className="font-medium text-blue-600">
+                                {variant.gene.symbol}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {variant.gene.name}
                               </div>
                             </div>
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="font-mono text-xs">
-                              Chr {variant.chromosome}:{(variant.position || 0).toLocaleString()}
+                              Chr {variant.chromosome}:{parseInt(variant.position).toLocaleString()}
                             </Badge>
                           </TableCell>
                           <TableCell className="font-mono text-sm">
-                            {variant.referenceAllele}→{variant.alternateAllele}
+                            {variant.referenceAllele} → {variant.alternateAllele}
                             {variant.proteinChange && (
-                              <div className="text-xs text-muted-foreground mt-1">
+                              <div className="text-xs text-muted-foreground">
                                 {variant.proteinChange}
                               </div>
                             )}
                           </TableCell>
                           <TableCell>
-                            <span className="text-sm">{variant.consequence?.replace(/_/g, ' ')}</span>
+                            <Badge 
+                              className={`text-xs ${clinicalSignificanceColors[variant.clinicalSignificance] || 'bg-gray-100 text-gray-800'}`}
+                              variant="outline"
+                            >
+                              {variant.clinicalSignificance || 'Unknown'}
+                            </Badge>
                           </TableCell>
                           <TableCell>
-                            {getImpactBadge(variant.impact)}
-                          </TableCell>
-                          <TableCell>
-                            {getClinicalSignificanceBadge(variant.clinicalSignificance)}
+                            <Badge 
+                              variant={variant.impact === 'HIGH' ? 'destructive' : 
+                                     variant.impact === 'MODERATE' ? 'default' : 'secondary'}
+                              className="text-xs"
+                            >
+                              {variant.impact || 'Unknown'}
+                            </Badge>
                           </TableCell>
                           <TableCell className="text-right">
                             <Button 
@@ -490,7 +478,7 @@ export default function VariantsPage() {
                 {/* Pagination */}
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {(total || 0).toLocaleString()} variants
+                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {total.toLocaleString()} variants
                   </div>
                   <div className="flex items-center space-x-2">
                     <Button
