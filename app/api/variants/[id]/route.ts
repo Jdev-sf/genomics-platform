@@ -1,7 +1,8 @@
-// app/api/variants/[id]/route.ts
+// app/api/variants/[id]/route.ts - Updated with Optimized Services
 import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
-import { getVariantService } from '@/lib/container/service-registry';
+import { getOptimizedVariantService } from '@/lib/container/optimized-service-registry';
+import { withApiCache, ApiCachePresets } from '@/lib/middleware/cache-middleware';
 import { addSecurityHeaders } from '@/lib/validation';
 
 async function getVariantByIdHandler(
@@ -11,17 +12,17 @@ async function getVariantByIdHandler(
   const resolvedParams = await params;
   const requestId = request.headers.get('x-request-id') || undefined;
 
-  // Get service
-  const variantService = await getVariantService();
+  // Get OPTIMIZED service
+  const variantService = await getOptimizedVariantService();
 
   try {
-    // Execute business logic
+    // Execute business logic with optimization + caching
     const result = await variantService.getVariantWithDetails(
       resolvedParams.id,
       requestId
     );
 
-    // Format detailed response matching the expected structure
+    // Format detailed response - già ottimizzato dal repository
     const formattedVariant = {
       id: result.variant.id,
       variant_id: result.variant.variantId,
@@ -34,7 +35,7 @@ async function getVariantByIdHandler(
         description: result.variant.gene.description,
       },
       chromosome: result.variant.chromosome,
-      position: result.variant.position.toString(),
+      position: result.variant.position, // Già convertito a string dai repository ottimizzati
       reference_allele: result.variant.referenceAllele,
       alternate_allele: result.variant.alternateAllele,
       variant_type: result.variant.variantType,
@@ -65,7 +66,7 @@ async function getVariantByIdHandler(
       related_variants: result.relatedVariants.map(v => ({
         id: v.id,
         variant_id: v.variantId,
-        position: v.position.toString(),
+        position: v.position, // Già convertito a string
         consequence: v.consequence,
         clinical_significance: v.clinicalSignificance,
       }))
@@ -85,4 +86,5 @@ async function getVariantByIdHandler(
 }
 
 const middlewareChain = createApiMiddlewareChain();
-export const GET = withMiddlewareChain(middlewareChain, getVariantByIdHandler);
+const cachedHandler = withApiCache(ApiCachePresets.DETAILS)(getVariantByIdHandler);
+export const GET = withMiddlewareChain(middlewareChain, cachedHandler);

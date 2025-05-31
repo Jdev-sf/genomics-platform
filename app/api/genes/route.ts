@@ -1,7 +1,7 @@
-// app/api/genes/route.ts - Updated with Caching
+// app/api/genes/route.ts - Updated with Optimized Services
 import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
-import { getCachedGeneService } from '@/lib/container/service-registry';
+import { getOptimizedGeneService } from '@/lib/container/optimized-service-registry';
 import { validateRequest, paginationSchema, addSecurityHeaders } from '@/lib/validation';
 import { withApiCache, ApiCachePresets } from '@/lib/middleware/cache-middleware';
 import { z } from 'zod';
@@ -26,10 +26,10 @@ async function getGenesHandler(request: NextRequest) {
   const data = validation.data!;
   const requestId = request.headers.get('x-request-id') || undefined;
 
-  // Get cached service
-  const geneService = await getCachedGeneService();
+  // Get OPTIMIZED service
+  const geneService = await getOptimizedGeneService();
 
-  // Execute business logic with caching
+  // Execute business logic with optimization
   const result = await geneService.searchGenes({
     search: data.search,
     chromosome: data.chromosome,

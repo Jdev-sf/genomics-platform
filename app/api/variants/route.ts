@@ -1,9 +1,9 @@
-// app/api/variants/route.ts
+// app/api/variants/route.ts - Updated with Optimized Services
 import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
-import { getVariantService } from '@/lib/container/service-registry';
+import { getOptimizedVariantService } from '@/lib/container/optimized-service-registry';
 import { validateRequest, paginationSchema, addSecurityHeaders } from '@/lib/validation';
-import { createPaginatedResponse } from '@/lib/utils/serialization';
+import { withApiCache, ApiCachePresets } from '@/lib/middleware/cache-middleware';
 import { z } from 'zod';
 
 const variantsQuerySchema = paginationSchema.extend({
@@ -46,10 +46,10 @@ async function getVariantsHandler(request: NextRequest) {
       ? parseFloat(data.maxFrequency) 
       : undefined;
 
-    // Get service
-    const variantService = await getVariantService();
+    // Get OPTIMIZED service
+    const variantService = await getOptimizedVariantService();
 
-    // Execute business logic
+    // Execute business logic with optimization + caching
     const result = await variantService.searchVariants({
       search: data.search,
       geneId: data.geneId,
@@ -65,43 +65,12 @@ async function getVariantsHandler(request: NextRequest) {
       sortOrder: data.sortOrder,
     }, requestId);
 
-    // AGGRESSIVE BigInt conversion
-    const safeBigIntConvert = (obj: any): any => {
-      if (obj === null || obj === undefined) return obj;
-      if (typeof obj === 'bigint') return obj.toString();
-      if (obj instanceof Date) return obj.toISOString();
-      if (Array.isArray(obj)) return obj.map(safeBigIntConvert);
-      if (typeof obj === 'object') {
-        const converted: any = {};
-        for (const [key, value] of Object.entries(obj)) {
-          converted[key] = safeBigIntConvert(value);
-        }
-        return converted;
-      }
-      return obj;
-    };
-
-    // Convert everything
-    const safeResult = safeBigIntConvert(result);
-
-    // Create response object manually
-    const responseData = {
+    // Format response - già serializzato dai repository ottimizzati
+    const response = NextResponse.json({
       status: 'success',
-      data: safeResult.data,
-      meta: safeResult.meta
-    };
-
-    // Test JSON.stringify before sending to NextResponse
-    try {
-      const testJson = JSON.stringify(responseData);
-      console.log('Variants JSON.stringify test passed, length:', testJson.length);
-    } catch (jsonError) {
-      console.error('Variants JSON.stringify test failed:', jsonError);
-      throw new Error('Data contains non-serializable values');
-    }
-
-    // Format response
-    const response = NextResponse.json(responseData);
+      data: result.data,
+      meta: result.meta
+    });
 
     return addSecurityHeaders(response);
 
@@ -120,4 +89,5 @@ async function getVariantsHandler(request: NextRequest) {
 }
 
 const middlewareChain = createApiMiddlewareChain();
-export const GET = withMiddlewareChain(middlewareChain, getVariantsHandler);
+const cachedHandler = withApiCache(ApiCachePresets.LISTS)(getVariantsHandler);
+export const GET = withMiddlewareChain(middlewareChain, cachedHandler);

@@ -1,7 +1,7 @@
-// app/api/genes/[id]/route.ts - Updated with Caching
+// app/api/genes/[id]/route.ts - Updated with Optimized Services
 import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
-import { getCachedGeneService } from '@/lib/container/service-registry';
+import { getOptimizedGeneService } from '@/lib/container/optimized-service-registry';
 import { withApiCache, ApiCachePresets, withCacheInvalidation } from '@/lib/middleware/cache-middleware';
 import { addSecurityHeaders } from '@/lib/validation';
 
@@ -12,11 +12,11 @@ async function getGeneByIdHandler(
   const resolvedParams = await params;
   const requestId = request.headers.get('x-request-id') || undefined;
 
-  // Get cached service
-  const geneService = await getCachedGeneService();
+  // Get OPTIMIZED service
+  const geneService = await getOptimizedGeneService();
 
   try {
-    // Execute business logic with caching
+    // Execute business logic with optimization + caching
     const result = await geneService.getGeneWithDetails(
       resolvedParams.id,
       requestId
@@ -45,7 +45,7 @@ async function updateGeneHandler(
   const requestId = request.headers.get('x-request-id') || undefined;
   const updateData = await request.json();
 
-  const geneService = await getCachedGeneService();
+  const geneService = await getOptimizedGeneService();
 
   try {
     const result = await geneService.updateGene(
@@ -69,7 +69,7 @@ async function updateGeneHandler(
 // Apply middleware chain with caching
 const middlewareChain = createApiMiddlewareChain();
 
-// GET with caching
+// GET with optimized caching
 const cachedGetHandler = withApiCache(ApiCachePresets.DETAILS)(getGeneByIdHandler);
 export const GET = withMiddlewareChain(middlewareChain, cachedGetHandler);
 
@@ -81,7 +81,7 @@ const updateWithInvalidation = withCacheInvalidation((req) => {
     `detail:${geneId}`,
     'list:*',
     'search:*',
-    `service:gene:*`,
+    `gene:*`,
   ];
 })(updateGeneHandler);
 export const PUT = withMiddlewareChain(middlewareChain, updateWithInvalidation);
