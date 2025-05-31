@@ -1,3 +1,4 @@
+// app/layout.tsx - UPDATED with Keyboard Shortcuts
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
@@ -5,6 +6,7 @@ import { Providers } from './providers';
 import { Toaster } from '@/components/ui/toaster';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ThemeScript } from '@/components/theme-script';
+import { KeyboardShortcutProvider } from '@/components/keyboard-shortcuts';
 
 // Initialize BigInt serialization fix
 import '@/lib/setup-bigint-serialization';
@@ -201,6 +203,19 @@ function PWAInstallPrompt() {
               console.log('Page load time:', perfData.loadEventEnd - perfData.loadEventStart, 'ms');
             }
           });
+
+          // Keyboard shortcut helper text
+          setTimeout(() => {
+            const helpText = document.createElement('div');
+            helpText.id = 'keyboard-help';
+            helpText.style.cssText = 'position:fixed;bottom:20px;left:20px;background:rgba(0,0,0,0.8);color:white;padding:8px 12px;border-radius:6px;font-size:12px;z-index:1000;pointer-events:none;opacity:0;transition:opacity 0.3s;';
+            helpText.textContent = 'Press ? for keyboard shortcuts';
+            document.body.appendChild(helpText);
+            
+            // Show help text briefly
+            setTimeout(() => helpText.style.opacity = '1', 2000);
+            setTimeout(() => helpText.style.opacity = '0', 5000);
+          }, 3000);
         `,
       }}
     />
@@ -268,21 +283,23 @@ export default function RootLayout({
           storageKey="genomics-ui-theme"
         >
           <Providers>
-            {children}
-            <Toaster />
-            
-            {/* Offline indicator */}
-            <div id="offline-indicator" className="hidden fixed top-0 left-0 right-0 bg-yellow-500 text-black text-center py-2 text-sm z-50">
-              You are currently offline. Some features may be limited.
-            </div>
+            <KeyboardShortcutProvider>
+              {children}
+              <Toaster />
+              
+              {/* Offline indicator */}
+              <div id="offline-indicator" className="hidden fixed top-0 left-0 right-0 bg-yellow-500 text-black text-center py-2 text-sm z-50">
+                You are currently offline. Some features may be limited.
+              </div>
 
-            {/* PWA Install Button */}
-            <button
-              id="install-button"
-              className="hidden fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors z-50"
-            >
-              Install App
-            </button>
+              {/* PWA Install Button */}
+              <button
+                id="install-button"
+                className="hidden fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors z-50"
+              >
+                Install App
+              </button>
+            </KeyboardShortcutProvider>
           </Providers>
         </ThemeProvider>
         <PWAInstallPrompt />

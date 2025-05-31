@@ -189,8 +189,7 @@ const nextConfig: NextConfig = {
 
   // Development optimizations
   ...(process.env.NODE_ENV === 'development' && {
-    // Reduce memory usage in development
-    swcMinify: false,
+    
     // Faster builds in development
     productionBrowserSourceMaps: false,
   }),
