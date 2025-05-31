@@ -1,8 +1,9 @@
-// app/api/search/route.ts
+// app/api/search/route.ts - Updated with Caching  
 import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
-import { getGeneService, getVariantService } from '@/lib/container/service-registry';
+import { getCachedGeneService, getCachedVariantService } from '@/lib/container/service-registry';
 import { validateRequest, searchSchema, addSecurityHeaders } from '@/lib/validation';
+import { withApiCache, ApiCachePresets } from '@/lib/middleware/cache-middleware';
 
 async function searchHandler(request: NextRequest) {
   // Validation
@@ -25,16 +26,16 @@ async function searchHandler(request: NextRequest) {
     });
   }
 
-  // Get services
+  // Get cached services
   const [geneService, variantService] = await Promise.all([
-    getGeneService(),
-    getVariantService()
+    getCachedGeneService(),
+    getCachedVariantService()
   ]);
 
   // Use default limit if not provided
   const limit = data.limit || 10;
 
-  // Execute parallel searches
+  // Execute parallel searches with caching
   const [genes, variants] = await Promise.all([
     geneService.quickSearch(data.query, Math.floor(limit / 2), requestId),
     variantService.quickSearch(data.query, Math.floor(limit / 2), requestId)
@@ -45,17 +46,17 @@ async function searchHandler(request: NextRequest) {
     query: data.query,
     total: genes.length + variants.length,
     results: {
-      genes: genes.map(gene => ({
+      genes: genes.map((gene: any) => ({
         id: gene.id,
         symbol: gene.symbol,
         name: gene.name,
         chromosome: gene.chromosome || 'Unknown',
         variant_count: 0 // This would need to be added to the service method
       })),
-      variants: variants.map(variant => ({
+      variants: variants.map((variant: any) => ({
         id: variant.id,
         variant_id: variant.variantId,
-        gene_symbol: (variant as any).gene?.symbol || 'Unknown',
+        gene_symbol: variant.gene?.symbol || 'Unknown',
         position: variant.position.toString(),
         clinical_significance: variant.clinicalSignificance || 'Unknown'
       }))
@@ -67,4 +68,5 @@ async function searchHandler(request: NextRequest) {
 }
 
 const middlewareChain = createApiMiddlewareChain();
-export const GET = withMiddlewareChain(middlewareChain, searchHandler);
+const cachedHandler = withApiCache(ApiCachePresets.SEARCH)(searchHandler);
+export const GET = withMiddlewareChain(middlewareChain, cachedHandler);

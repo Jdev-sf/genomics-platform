@@ -1,8 +1,9 @@
-// app/api/genes/route.ts
+// app/api/genes/route.ts - Updated with Caching
 import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
-import { getGeneService } from '@/lib/container/service-registry';
+import { getCachedGeneService } from '@/lib/container/service-registry';
 import { validateRequest, paginationSchema, addSecurityHeaders } from '@/lib/validation';
+import { withApiCache, ApiCachePresets } from '@/lib/middleware/cache-middleware';
 import { z } from 'zod';
 
 const genesQuerySchema = paginationSchema.extend({
@@ -25,10 +26,10 @@ async function getGenesHandler(request: NextRequest) {
   const data = validation.data!;
   const requestId = request.headers.get('x-request-id') || undefined;
 
-  // Get service
-  const geneService = await getGeneService();
+  // Get cached service
+  const geneService = await getCachedGeneService();
 
-  // Execute business logic
+  // Execute business logic with caching
   const result = await geneService.searchGenes({
     search: data.search,
     chromosome: data.chromosome,
@@ -50,6 +51,7 @@ async function getGenesHandler(request: NextRequest) {
   return addSecurityHeaders(response);
 }
 
-// Apply middleware chain
+// Apply middleware chain with caching
 const middlewareChain = createApiMiddlewareChain();
-export const GET = withMiddlewareChain(middlewareChain, getGenesHandler);
+const cachedHandler = withApiCache(ApiCachePresets.LISTS)(getGenesHandler);
+export const GET = withMiddlewareChain(middlewareChain, cachedHandler);
