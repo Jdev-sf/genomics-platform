@@ -19,6 +19,14 @@ const nextConfig: NextConfig = {
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
 
+  // Fix per development event listeners
+  onDemandEntries: {
+    // period (in ms) where the server will keep pages in the buffer
+    maxInactiveAge: 25 * 1000,
+    // number of pages that should be kept simultaneously without being disposed
+    pagesBufferLength: 2,
+  },
+
   // Headers for PWA
   async headers() {
     return [
@@ -76,11 +84,6 @@ const nextConfig: NextConfig = {
             key: 'Referrer-Policy',
             value: 'origin-when-cross-origin'
           },
-          // Performance headers
-          {
-            key: 'X-DNS-Prefetch-Control',
-            value: 'on'
-          }
         ]
       }
     ];
@@ -131,6 +134,15 @@ const nextConfig: NextConfig = {
       config.optimization.minimize = false;
     }
 
+    // Fix per event listeners in development
+    if (dev && isServer) {
+      // Suppress warnings for development hot reload
+      config.ignoreWarnings = [
+        /MaxListenersExceededWarning/,
+        /Critical dependency/,
+      ];
+    }
+
     return config;
   },
 
@@ -173,6 +185,14 @@ const nextConfig: NextConfig = {
   // Generate standalone output for Docker deployment in production
   ...(process.env.NODE_ENV === 'production' && {
     output: 'standalone',
+  }),
+
+  // Development optimizations
+  ...(process.env.NODE_ENV === 'development' && {
+    // Reduce memory usage in development
+    swcMinify: false,
+    // Faster builds in development
+    productionBrowserSourceMaps: false,
   }),
 };
 

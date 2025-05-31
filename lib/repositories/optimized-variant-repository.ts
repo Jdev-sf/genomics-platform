@@ -2,6 +2,7 @@
 import { Variant, Prisma } from '@prisma/client';
 import { VariantRepository, VariantCreateInput, VariantUpdateInput, VariantWhereInput, VariantWithGene } from './variant-repository';
 import { PaginationParams, PaginationResult } from './base-repository';
+import { prisma as optimizedPrisma } from '@/lib/prisma-optimized';
 
 interface GenomicRegion {
   chromosome: string;
@@ -21,6 +22,8 @@ interface VariantStatistics {
 }
 
 export class OptimizedVariantRepository extends VariantRepository {
+
+    protected prisma = optimizedPrisma;
 
   // Query ottimizzata con joins efficienti
   override async findManyWithGene(

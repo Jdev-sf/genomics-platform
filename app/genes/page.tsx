@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Database, Search, Filter, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Database, Search, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -23,60 +23,69 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { useDebounce } from '@/hooks/use-debounce';
 import { ModernHeader } from '@/components/layout/modern-header';
-
-interface Gene {
-  id: string;
-  symbol: string;
-  name: string;
-  chromosome: string;
-  startPosition: string | null;
-  endPosition: string | null;
-  strand: string;
-  biotype: string;
-  description: string;
-  variantCount: number;
-  pathogenicCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface GenesResponse {
-  error: string;
-  status: string;
-  data: Gene[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
+import { useGenes, usePrefetchGeneDetail } from '@/hooks/queries/use-genes';
 
 export default function GenesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const prefetchGeneDetail = usePrefetchGeneDetail();
 
-  const [genes, setGenes] = useState<Gene[]>([]);
-  const [loading, setLoading] = useState(true);
+  // State from URL params
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [chromosome, setChromosome] = useState(searchParams.get('chromosome') || 'all');
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
   const [pageSize] = useState(parseInt(searchParams.get('pageSize') || '25'));
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'symbol');
-  const [sortOrder, setSortOrder] = useState(searchParams.get('sortOrder') || 'asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(
+    (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc'
+  );
 
-  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  // Debounced search query
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  
+  // Simple debounce with useEffect
+  useEffect(() => {
+    // Only run on client-side
+    if (typeof window === 'undefined') return;
+    
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  const updateURLParams = useCallback(() => {
+  // Build query params
+  const queryParams = useMemo(() => ({
+    search: debouncedSearch || undefined,
+    chromosome: chromosome !== 'all' ? chromosome : undefined,
+    page,
+    limit: pageSize,
+    sortBy,
+    sortOrder,
+  }), [debouncedSearch, chromosome, page, pageSize, sortBy, sortOrder]);
+
+  // Use React Query hook
+  const { 
+    data, 
+    isLoading, 
+    error, 
+    isFetching,
+    isPlaceholderData 
+  } = useGenes(queryParams);
+
+  const genes = data?.genes || [];
+  const meta = data?.meta || { total: 0, totalPages: 0, hasNextPage: false, hasPrevPage: false };
+
+  // Update URL when params change
+  const updateURL = useCallback(() => {
+    // Only run on client-side
+    if (typeof window === 'undefined') return;
+    
     const params = new URLSearchParams();
-    if (debouncedSearchQuery) params.set('search', debouncedSearchQuery);
+    if (debouncedSearch) params.set('search', debouncedSearch);
     if (chromosome && chromosome !== 'all') params.set('chromosome', chromosome);
     if (page > 1) params.set('page', page.toString());
     if (pageSize !== 25) params.set('pageSize', pageSize.toString());
@@ -85,56 +94,19 @@ export default function GenesPage() {
 
     const newURL = `/genes${params.toString() ? '?' + params.toString() : ''}`;
     router.replace(newURL, { scroll: false });
-  }, [debouncedSearchQuery, chromosome, page, pageSize, sortBy, sortOrder, router]);
+  }, [debouncedSearch, chromosome, page, pageSize, sortBy, sortOrder, router]);
 
-  const fetchGenes = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: pageSize.toString(),
-        sortBy,
-        sortOrder,
-        ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
-        ...(chromosome && chromosome !== 'all' && { chromosome }),
-      });
-
-      const response = await fetch(`/api/genes?${params}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data: GenesResponse = await response.json();
-      
-      if (data.status !== 'success') {
-        throw new Error(data.error || 'API returned error status');
-      }
-
-      setGenes(data.data || []);
-      setTotal(data.meta?.total || 0);
-      setTotalPages(data.meta?.totalPages || 0);
-
-    } catch (error) {
-      console.error('Error fetching genes:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to fetch genes. Please try again.',
-        variant: 'destructive',
-      });
-      setGenes([]);
-      setTotal(0);
-      setTotalPages(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, debouncedSearchQuery, chromosome, sortBy, sortOrder, toast]);
-
+  // Update URL when params change (but debounce it)
   useEffect(() => {
-    fetchGenes();
-    updateURLParams();
-  }, [fetchGenes, updateURLParams]);
+    // Only run on client-side
+    if (typeof window === 'undefined') return;
+    
+    const timer = setTimeout(() => {
+      updateURL();
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [updateURL]);
 
   const handleSort = (column: string) => {
     const newSortOrder = sortBy === column && sortOrder === 'asc' ? 'desc' : 'asc';
@@ -147,7 +119,7 @@ export default function GenesPage() {
     try {
       const params = new URLSearchParams({
         format: 'csv',
-        ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(chromosome && chromosome !== 'all' && { chromosome }),
       });
 
@@ -179,10 +151,43 @@ export default function GenesPage() {
   };
 
   const chromosomes = useMemo(() => {
-    const chroms = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 
-                   '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y'];
-    return chroms;
+    return ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 
+            '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y'];
   }, []);
+
+  // Handle row click with prefetching
+  const handleRowClick = (geneId: string) => {
+    router.push(`/genes/${geneId}`);
+  };
+
+  const handleRowHover = (geneId: string) => {
+    // Prefetch gene detail on hover
+    prefetchGeneDetail(geneId);
+  };
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+        <ModernHeader />
+        <div className="container mx-auto py-6">
+          <Card className="max-w-md mx-auto">
+            <CardHeader>
+              <CardTitle className="text-red-600">Error Loading Genes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                {error instanceof Error ? error.message : 'Failed to load genes'}
+              </p>
+              <Button onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
@@ -197,7 +202,7 @@ export default function GenesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleExport} disabled={loading}>
+            <Button variant="outline" onClick={handleExport} disabled={isLoading}>
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
@@ -246,7 +251,7 @@ export default function GenesPage() {
                 <Select value={`${sortBy}-${sortOrder}`} onValueChange={(value) => {
                   const [newSortBy, newSortOrder] = value.split('-');
                   setSortBy(newSortBy);
-                  setSortOrder(newSortOrder);
+                  setSortOrder(newSortOrder as 'asc' | 'desc');
                   setPage(1);
                 }}>
                   <SelectTrigger>
@@ -263,12 +268,12 @@ export default function GenesPage() {
               </div>
             </div>
 
-            {(debouncedSearchQuery || (chromosome && chromosome !== 'all')) && (
+            {(debouncedSearch || (chromosome && chromosome !== 'all')) && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Active filters:</span>
-                {debouncedSearchQuery && (
+                {debouncedSearch && (
                   <Badge variant="secondary" className="gap-1">
-                    Search: {debouncedSearchQuery}
+                    Search: {debouncedSearch}
                     <button
                       onClick={() => setSearchQuery('')}
                       className="ml-1 hover:bg-background rounded-full"
@@ -298,24 +303,27 @@ export default function GenesPage() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle>
-                {loading ? (
-                  'Loading...'
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading genes...
+                  </div>
                 ) : (
-                  `${total.toLocaleString()} genes found`
+                  <div className="flex items-center gap-2">
+                    {isFetching && !isLoading && (
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                    )}
+                    {meta.total.toLocaleString()} genes found
+                  </div>
                 )}
               </CardTitle>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                Page {page} of {totalPages}
+                Page {page} of {meta.totalPages}
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                Loading genes...
-              </div>
-            ) : genes.length > 0 ? (
+            {genes.length > 0 ? (
               <div className="space-y-4">
                 <div className="rounded-md border">
                   <Table>
@@ -354,7 +362,8 @@ export default function GenesPage() {
                         <TableRow 
                           key={gene.id}
                           className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => router.push(`/genes/${gene.id}`)}
+                          onClick={() => handleRowClick(gene.id)}
+                          onMouseEnter={() => handleRowHover(gene.id)}
                         >
                           <TableCell className="font-medium">
                             <span className="text-blue-600 hover:text-blue-800 font-semibold">
@@ -388,7 +397,7 @@ export default function GenesPage() {
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push(`/genes/${gene.id}`);
+                                handleRowClick(gene.id);
                               }}
                             >
                               View
@@ -403,20 +412,20 @@ export default function GenesPage() {
                 {/* Pagination */}
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {total.toLocaleString()} genes
+                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, meta.total)} of {meta.total.toLocaleString()} genes
                   </div>
                   <div className="flex items-center space-x-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setPage(Math.max(1, page - 1))}
-                      disabled={page <= 1}
+                      disabled={!meta.hasPrevPage || isPlaceholderData}
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
                       Previous
                     </Button>
                     <div className="flex items-center space-x-1">
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      {Array.from({ length: Math.min(5, meta.totalPages) }, (_, i) => {
                         const pageNum = i + 1;
                         return (
                           <Button
@@ -425,21 +434,23 @@ export default function GenesPage() {
                             size="sm"
                             onClick={() => setPage(pageNum)}
                             className="w-8 h-8 p-0"
+                            disabled={isPlaceholderData}
                           >
                             {pageNum}
                           </Button>
                         );
                       })}
-                      {totalPages > 5 && (
+                      {meta.totalPages > 5 && (
                         <>
                           <span className="text-muted-foreground">...</span>
                           <Button
-                            variant={page === totalPages ? "default" : "outline"}
+                            variant={page === meta.totalPages ? "default" : "outline"}
                             size="sm"
-                            onClick={() => setPage(totalPages)}
+                            onClick={() => setPage(meta.totalPages)}
                             className="w-8 h-8 p-0"
+                            disabled={isPlaceholderData}
                           >
-                            {totalPages}
+                            {meta.totalPages}
                           </Button>
                         </>
                       )}
@@ -447,8 +458,8 @@ export default function GenesPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage(Math.min(totalPages, page + 1))}
-                      disabled={page >= totalPages}
+                      onClick={() => setPage(Math.min(meta.totalPages, page + 1))}
+                      disabled={!meta.hasNextPage || isPlaceholderData}
                     >
                       Next
                       <ChevronRight className="h-4 w-4 ml-1" />
@@ -456,7 +467,7 @@ export default function GenesPage() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : !isLoading ? (
               <div className="text-center py-12">
                 <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No genes found</h3>
@@ -464,7 +475,7 @@ export default function GenesPage() {
                   Try adjusting your search criteria or filters.
                 </p>
               </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       </div>

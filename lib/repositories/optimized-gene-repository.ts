@@ -2,6 +2,7 @@
 import { Gene, Prisma } from '@prisma/client';
 import { GeneRepository, GeneCreateInput, GeneUpdateInput, GeneWhereInput, GeneWithStats } from './gene-repository';
 import { PaginationParams, PaginationResult } from './base-repository';
+import { prisma as optimizedPrisma } from '@/lib/prisma-optimized';
 
 interface CursorPaginationParams {
   cursor?: string;
@@ -22,6 +23,8 @@ interface CursorPaginationResult<T> {
 }
 
 export class OptimizedGeneRepository extends GeneRepository {
+
+    protected prisma = optimizedPrisma;
   
   // Ottimizzata: Single query con aggregazioni SQL native
   override async findManyWithStats(

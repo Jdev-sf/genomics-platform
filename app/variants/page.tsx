@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Activity, Search, Filter, Download, ChevronLeft, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
+import { Activity, Search, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -23,46 +23,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { useDebounce } from '@/hooks/use-debounce';
 import { ModernHeader } from '@/components/layout/modern-header';
-
-interface Variant {
-  id: string;
-  variantId: string;
-  gene: {
-    id: string;
-    symbol: string;
-    name: string;
-    chromosome: string;
-  };
-  chromosome: string;
-  position: string;
-  referenceAllele: string;
-  alternateAllele: string;
-  variantType: string;
-  consequence: string;
-  impact: string;
-  proteinChange: string;
-  frequency: number;
-  clinicalSignificance: string;
-  createdAt: string;
-  updatedAt: string;
-  annotationsCount: number;
-}
-
-interface VariantsResponse {
-  error: string;
-  status: string;
-  data: Variant[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
+import { useVariants, usePrefetchVariantDetail } from '@/hooks/queries/use-variants';
 
 const clinicalSignificanceColors: Record<string, string> = {
   'Pathogenic': 'bg-red-100 text-red-800 border-red-200',
@@ -76,25 +38,63 @@ export default function VariantsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const prefetchVariantDetail = usePrefetchVariantDetail();
 
-  const [variants, setVariants] = useState<Variant[]>([]);
-  const [loading, setLoading] = useState(true);
+  // State from URL params
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [chromosome, setChromosome] = useState(searchParams.get('chromosome') || 'all');
   const [clinicalSig, setClinicalSig] = useState(searchParams.get('clinicalSignificance') || 'all');
   const [impact, setImpact] = useState(searchParams.get('impact') || 'all');
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
   const [pageSize] = useState(parseInt(searchParams.get('pageSize') || '25'));
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'position');
-  const [sortOrder, setSortOrder] = useState(searchParams.get('sortOrder') || 'asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(
+    (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc'
+  );
 
-  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  // Debounced search query
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  const updateURLParams = useCallback(() => {
+  // Build query params
+  const queryParams = useMemo(() => ({
+    search: debouncedSearch || undefined,
+    chromosome: chromosome !== 'all' ? chromosome : undefined,
+    clinicalSignificance: clinicalSig !== 'all' ? [clinicalSig] : undefined,
+    impact: impact !== 'all' ? [impact] : undefined,
+    page,
+    limit: pageSize,
+    sortBy,
+    sortOrder,
+  }), [debouncedSearch, chromosome, clinicalSig, impact, page, pageSize, sortBy, sortOrder]);
+
+  // Use React Query hook
+  const { 
+    data, 
+    isLoading, 
+    error, 
+    isFetching,
+    isPlaceholderData 
+  } = useVariants(queryParams);
+
+  const variants = data?.variants || [];
+  const meta = data?.meta || { total: 0, totalPages: 0, hasNextPage: false, hasPrevPage: false };
+
+  // Update URL when params change
+  const updateURL = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    
     const params = new URLSearchParams();
-    if (debouncedSearchQuery) params.set('search', debouncedSearchQuery);
+    if (debouncedSearch) params.set('search', debouncedSearch);
     if (chromosome && chromosome !== 'all') params.set('chromosome', chromosome);
     if (clinicalSig && clinicalSig !== 'all') params.set('clinicalSignificance', clinicalSig);
     if (impact && impact !== 'all') params.set('impact', impact);
@@ -105,58 +105,17 @@ export default function VariantsPage() {
 
     const newURL = `/variants${params.toString() ? '?' + params.toString() : ''}`;
     router.replace(newURL, { scroll: false });
-  }, [debouncedSearchQuery, chromosome, clinicalSig, impact, page, pageSize, sortBy, sortOrder, router]);
-
-  const fetchVariants = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: pageSize.toString(),
-        sortBy,
-        sortOrder,
-        ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
-        ...(chromosome && chromosome !== 'all' && { chromosome }),
-        ...(clinicalSig && clinicalSig !== 'all' && { clinicalSignificance: clinicalSig }),
-        ...(impact && impact !== 'all' && { impact }),
-      });
-
-      const response = await fetch(`/api/variants?${params}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data: VariantsResponse = await response.json();
-      
-      if (data.status !== 'success') {
-        throw new Error(data.error || 'API returned error status');
-      }
-
-      setVariants(data.data || []);
-      setTotal(data.meta?.total || 0);
-      setTotalPages(data.meta?.totalPages || 0);
-
-    } catch (error) {
-      console.error('Error fetching variants:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to fetch variants. Please try again.',
-        variant: 'destructive',
-      });
-      setVariants([]);
-      setTotal(0);
-      setTotalPages(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, debouncedSearchQuery, chromosome, clinicalSig, impact, sortBy, sortOrder, toast]);
+  }, [debouncedSearch, chromosome, clinicalSig, impact, page, pageSize, sortBy, sortOrder, router]);
 
   useEffect(() => {
-    fetchVariants();
-    updateURLParams();
-  }, [fetchVariants, updateURLParams]);
+    if (typeof window === 'undefined') return;
+    
+    const timer = setTimeout(() => {
+      updateURL();
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [updateURL]);
 
   const handleSort = (column: string) => {
     const newSortOrder = sortBy === column && sortOrder === 'asc' ? 'desc' : 'asc';
@@ -169,7 +128,7 @@ export default function VariantsPage() {
     try {
       const params = new URLSearchParams({
         format: 'csv',
-        ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(chromosome && chromosome !== 'all' && { chromosome }),
         ...(clinicalSig && clinicalSig !== 'all' && { clinicalSignificance: clinicalSig }),
         ...(impact && impact !== 'all' && { impact }),
@@ -203,9 +162,8 @@ export default function VariantsPage() {
   };
 
   const chromosomes = useMemo(() => {
-    const chroms = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 
-                   '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y'];
-    return chroms;
+    return ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 
+            '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y'];
   }, []);
 
   const clinicalSignificanceOptions = [
@@ -217,6 +175,39 @@ export default function VariantsPage() {
   ];
 
   const impactOptions = ['HIGH', 'MODERATE', 'LOW', 'MODIFIER'];
+
+  // Handle row interactions
+  const handleRowClick = (variantId: string) => {
+    router.push(`/variants/${variantId}`);
+  };
+
+  const handleRowHover = (variantId: string) => {
+    prefetchVariantDetail(variantId);
+  };
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+        <ModernHeader />
+        <div className="container mx-auto py-6">
+          <Card className="max-w-md mx-auto">
+            <CardHeader>
+              <CardTitle className="text-red-600">Error Loading Variants</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                {error instanceof Error ? error.message : 'Failed to load variants'}
+              </p>
+              <Button onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
@@ -231,7 +222,7 @@ export default function VariantsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleExport} disabled={loading}>
+            <Button variant="outline" onClick={handleExport} disabled={isLoading}>
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
@@ -310,13 +301,14 @@ export default function VariantsPage() {
               </div>
             </div>
 
-            {(debouncedSearchQuery || (chromosome && chromosome !== 'all') || 
+            {/* Active filters display */}
+            {(debouncedSearch || (chromosome && chromosome !== 'all') || 
               (clinicalSig && clinicalSig !== 'all') || (impact && impact !== 'all')) && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-muted-foreground">Active filters:</span>
-                {debouncedSearchQuery && (
+                {debouncedSearch && (
                   <Badge variant="secondary" className="gap-1">
-                    Search: {debouncedSearchQuery}
+                    Search: {debouncedSearch}
                     <button
                       onClick={() => setSearchQuery('')}
                       className="ml-1 hover:bg-background rounded-full"
@@ -368,24 +360,27 @@ export default function VariantsPage() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle>
-                {loading ? (
-                  'Loading...'
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading variants...
+                  </div>
                 ) : (
-                  `${total.toLocaleString()} variants found`
+                  <div className="flex items-center gap-2">
+                    {isFetching && !isLoading && (
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                    )}
+                    {meta.total.toLocaleString()} variants found
+                  </div>
                 )}
               </CardTitle>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                Page {page} of {totalPages}
+                Page {page} of {meta.totalPages}
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                Loading variants...
-              </div>
-            ) : variants.length > 0 ? (
+            {variants.length > 0 ? (
               <div className="space-y-4">
                 <div className="rounded-md border">
                   <Table>
@@ -406,15 +401,16 @@ export default function VariantsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {variants.map((variant) => (
+                      {variants.map((variant: any) => (
                         <TableRow 
                           key={variant.id}
                           className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => router.push(`/variants/${variant.id}`)}
+                          onClick={() => handleRowClick(variant.id)}
+                          onMouseEnter={() => handleRowHover(variant.id)}
                         >
                           <TableCell className="font-mono text-sm">
                             <span className="text-blue-600 hover:text-blue-800">
-                              {variant.variantId}
+                              {variant.variant_id}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -433,19 +429,19 @@ export default function VariantsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-mono text-sm">
-                            {variant.referenceAllele} → {variant.alternateAllele}
-                            {variant.proteinChange && (
+                            {variant.reference_allele || 'N/A'} → {variant.alternate_allele || 'N/A'}
+                            {variant.protein_change && (
                               <div className="text-xs text-muted-foreground">
-                                {variant.proteinChange}
+                                {variant.protein_change}
                               </div>
                             )}
                           </TableCell>
                           <TableCell>
                             <Badge 
-                              className={`text-xs ${clinicalSignificanceColors[variant.clinicalSignificance] || 'bg-gray-100 text-gray-800'}`}
+                              className={`text-xs ${clinicalSignificanceColors[variant.clinical_significance || ''] || 'bg-gray-100 text-gray-800'}`}
                               variant="outline"
                             >
-                              {variant.clinicalSignificance || 'Unknown'}
+                              {variant.clinical_significance || 'Unknown'}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -463,7 +459,7 @@ export default function VariantsPage() {
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push(`/variants/${variant.id}`);
+                                handleRowClick(variant.id);
                               }}
                             >
                               View
@@ -478,20 +474,20 @@ export default function VariantsPage() {
                 {/* Pagination */}
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {total.toLocaleString()} variants
+                    Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, meta.total)} of {meta.total.toLocaleString()} variants
                   </div>
                   <div className="flex items-center space-x-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setPage(Math.max(1, page - 1))}
-                      disabled={page <= 1}
+                      disabled={!meta.hasPrevPage || isPlaceholderData}
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
                       Previous
                     </Button>
                     <div className="flex items-center space-x-1">
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      {Array.from({ length: Math.min(5, meta.totalPages) }, (_, i) => {
                         const pageNum = i + 1;
                         return (
                           <Button
@@ -500,21 +496,23 @@ export default function VariantsPage() {
                             size="sm"
                             onClick={() => setPage(pageNum)}
                             className="w-8 h-8 p-0"
+                            disabled={isPlaceholderData}
                           >
                             {pageNum}
                           </Button>
                         );
                       })}
-                      {totalPages > 5 && (
+                      {meta.totalPages > 5 && (
                         <>
                           <span className="text-muted-foreground">...</span>
                           <Button
-                            variant={page === totalPages ? "default" : "outline"}
+                            variant={page === meta.totalPages ? "default" : "outline"}
                             size="sm"
-                            onClick={() => setPage(totalPages)}
+                            onClick={() => setPage(meta.totalPages)}
                             className="w-8 h-8 p-0"
+                            disabled={isPlaceholderData}
                           >
-                            {totalPages}
+                            {meta.totalPages}
                           </Button>
                         </>
                       )}
@@ -522,8 +520,8 @@ export default function VariantsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage(Math.min(totalPages, page + 1))}
-                      disabled={page >= totalPages}
+                      onClick={() => setPage(Math.min(meta.totalPages, page + 1))}
+                      disabled={!meta.hasNextPage || isPlaceholderData}
                     >
                       Next
                       <ChevronRight className="h-4 w-4 ml-1" />
@@ -531,7 +529,7 @@ export default function VariantsPage() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : !isLoading ? (
               <div className="text-center py-12">
                 <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No variants found</h3>
@@ -539,7 +537,7 @@ export default function VariantsPage() {
                   Try adjusting your search criteria or filters.
                 </p>
               </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       </div>
