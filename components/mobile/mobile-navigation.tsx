@@ -1,4 +1,4 @@
-// components/mobile/mobile-navigation.tsx - CORRETTO
+// components/mobile/mobile-navigation.tsx - RIMOSSO FAB
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -11,7 +11,6 @@ import {
   Activity, 
   Upload, 
   Search,
-  Plus,
   Menu,
   Bell,
   User,
@@ -67,8 +66,6 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showFAB, setShowFAB] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
 
   // Detect mobile device
   useEffect(() => {
@@ -80,18 +77,6 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-
-  // Hide/show FAB on scroll
-  useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      setShowFAB(currentScrollY < lastScrollY || currentScrollY < 100);
-      setLastScrollY(currentScrollY);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
 
   // Close sidebar on route change
   useEffect(() => {
@@ -159,7 +144,7 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
   // Mobile version - render our custom mobile header
   return (
     <>
-      {/* Mobile Header - UNICO HEADER PER MOBILE */}
+      {/* Mobile Header */}
       <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 px-4 py-3 sticky top-0 z-40">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -421,31 +406,12 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
         </div>
       )}
 
-      {/* Main Content - SENZA ModernHeader per mobile */}
+      {/* Main Content */}
       <main className="pb-20">
         {children}
       </main>
 
-      {/* Floating Action Button */}
-      {showFAB && (
-        <div className="fixed bottom-20 right-4 z-30">
-          <div className="relative">
-            <Button
-              size="lg"
-              className="rounded-full h-14 w-14 shadow-lg bg-blue-600 hover:bg-blue-700"
-              onClick={() => {
-                if (session) {
-                  router.push('/import');
-                } else {
-                  setShowSearch(true);
-                }
-              }}
-            >
-              <Plus className="h-6 w-6" />
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* RIMOSSO: Floating Action Button per evitare sovrapposizioni */}
 
       {/* Bottom Tab Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 safe-area-inset-bottom z-40">
