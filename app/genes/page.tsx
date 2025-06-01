@@ -1,4 +1,4 @@
-// app/genes/page.tsx - UPDATED WITH UX IMPROVEMENTS
+// app/genes/page.tsx - AGGIORNATO CON NUOVE UX FEATURES
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
@@ -28,7 +28,7 @@ import { useGenes, usePrefetchGeneDetail } from '@/hooks/queries/use-genes';
 
 // NEW UX COMPONENTS
 import { SmartSearch } from '@/components/smart-search';
-import { TableSkeleton, StatCardsSkeleton } from '@/components/ui/skeleton-loaders';
+import { TableSkeleton } from '@/components/ui/skeleton-loaders';
 import { 
   BulkOperations, 
   useBulkSelection, 
@@ -36,6 +36,7 @@ import {
   BulkOperationsProvider 
 } from '@/components/bulk-operations';
 import { Checkbox } from '@/components/ui/checkbox';
+import { QuickHelp, DetailedHelp, HelpSuggestions } from '@/components/contextual-help';
 
 export default function GenesPage() {
   const router = useRouter();
@@ -241,15 +242,20 @@ export default function GenesPage() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
         <ModernHeader />
         <div className="container mx-auto py-6 space-y-6 px-4">
-          {/* Header */}
+          {/* Header with Contextual Help */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
+            <div className="flex items-center gap-2">
               <h1 className="text-3xl font-bold tracking-tight">Genes Database</h1>
-              <p className="text-muted-foreground">
-                Explore and analyze human genes with AI-powered insights
-              </p>
+              <QuickHelp topic="gene-expression" />
             </div>
             <div className="flex items-center gap-2">
+              <DetailedHelp 
+                topic="gene-expression" 
+                trigger="custom"
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Learn about genes
+              </DetailedHelp>
               <Button variant="outline" onClick={handleExport} disabled={isLoading}>
                 <Download className="mr-2 h-4 w-4" />
                 Export
@@ -260,7 +266,10 @@ export default function GenesPage() {
           {/* Filters with Smart Search */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Search & Filter</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Search & Filter</CardTitle>
+                <QuickHelp topic="keyboard-shortcuts" />
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-3">
@@ -379,7 +388,6 @@ export default function GenesPage() {
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                // SKELETON LOADING - NEW UX FEATURE
                 <TableSkeleton rows={pageSize} columns={6} />
               ) : genes.length > 0 ? (
                 <div className="space-y-4">
@@ -552,6 +560,9 @@ export default function GenesPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Context-aware Help for this page */}
+          <HelpSuggestions page="genes" />
         </div>
       </div>
     </BulkOperationsProvider>

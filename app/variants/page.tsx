@@ -1,4 +1,4 @@
-// app/variants/page.tsx - UPDATED WITH UX IMPROVEMENTS
+// app/variants/page.tsx - AGGIORNATO CON NUOVE UX FEATURES
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -36,6 +36,7 @@ import {
   BulkOperationsProvider 
 } from '@/components/bulk-operations';
 import { Checkbox } from '@/components/ui/checkbox';
+import { QuickHelp, DetailedHelp, HelpSuggestions } from '@/components/contextual-help';
 
 const clinicalSignificanceColors: Record<string, string> = {
   'Pathogenic': 'bg-red-100 text-red-800 border-red-200',
@@ -45,7 +46,6 @@ const clinicalSignificanceColors: Record<string, string> = {
   'Benign': 'bg-green-100 text-green-800 border-green-200',
 };
 
-// Types (add at top of file after imports)
 interface VariantData {
   id: string;
   variant_id: string;
@@ -291,15 +291,20 @@ export default function VariantsPage() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
         <ModernHeader />
         <div className="container mx-auto py-6 space-y-6 px-4">
-          {/* Header */}
+          {/* Header with Contextual Help */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
+            <div className="flex items-center gap-2">
               <h1 className="text-3xl font-bold tracking-tight">Variants Database</h1>
-              <p className="text-muted-foreground">
-                Explore genetic variants and their clinical significance
-              </p>
+              <QuickHelp topic="clinical-significance" />
             </div>
             <div className="flex items-center gap-2">
+              <DetailedHelp 
+                topic="variant-impact" 
+                trigger="custom"
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Learn about variants
+              </DetailedHelp>
               <Button variant="outline" onClick={handleExport} disabled={isLoading}>
                 <Download className="mr-2 h-4 w-4" />
                 Export
@@ -310,7 +315,10 @@ export default function VariantsPage() {
           {/* Filters with Smart Search */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Search & Filter</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Search & Filter</CardTitle>
+                <QuickHelp topic="allele-frequency" />
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -342,7 +350,10 @@ export default function VariantsPage() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Clinical Significance</label>
+                  <label className="text-sm font-medium mb-2 block flex items-center gap-1">
+                    Clinical Significance
+                    <QuickHelp topic="clinical-significance" trigger="icon" className="w-3 h-3" />
+                  </label>
                   <Select value={clinicalSig} onValueChange={setClinicalSig}>
                     <SelectTrigger>
                       <SelectValue placeholder="All significance" />
@@ -359,7 +370,10 @@ export default function VariantsPage() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Impact</label>
+                  <label className="text-sm font-medium mb-2 block flex items-center gap-1">
+                    Impact
+                    <QuickHelp topic="variant-impact" trigger="icon" className="w-3 h-3" />
+                  </label>
                   <Select value={impact} onValueChange={setImpact}>
                     <SelectTrigger>
                       <SelectValue placeholder="All impacts" />
@@ -466,7 +480,6 @@ export default function VariantsPage() {
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                // SKELETON LOADING - NEW UX FEATURE
                 <TableSkeleton rows={pageSize} columns={7} />
               ) : variants.length > 0 ? (
                 <div className="space-y-4">
@@ -644,6 +657,9 @@ export default function VariantsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Context-aware Help for this page */}
+          <HelpSuggestions page="variants" />
         </div>
       </div>
     </BulkOperationsProvider>

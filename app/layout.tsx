@@ -10,6 +10,8 @@ import { KeyboardShortcutProvider } from '@/components/keyboard-shortcuts';
 
 // Initialize BigInt serialization fix
 import '@/lib/setup-bigint-serialization';
+import { SmartHelp } from '@/components/contextual-help';
+import { MobileNavigation } from '@/components/mobile/mobile-navigation';
 
 // Initialize monitoring system
 if (typeof window === 'undefined') {
@@ -230,49 +232,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <ThemeScript />
-        {/* PWA Meta Tags */}
-        <meta name="application-name" content="Genomics Platform" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Genomics Platform" />
-        <meta name="format-detection" content="telephone=no" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="msapplication-TileColor" content="#2563eb" />
-        <meta name="msapplication-tap-highlight" content="no" />
-
-        {/* Apple Touch Icons */}
-        <link rel="apple-touch-icon" href="/icons/icon-152x152.png" />
-        <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png" />
-
-        {/* Favicon */}
-        <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
-        
-        {/* Splash Screens for iOS */}
-        <link rel="apple-touch-startup-image" href="/icons/splash-2048x2732.png" sizes="2048x2732" />
-        <link rel="apple-touch-startup-image" href="/icons/splash-1668x2224.png" sizes="1668x2224" />
-        <link rel="apple-touch-startup-image" href="/icons/splash-1536x2048.png" sizes="1536x2048" />
-        <link rel="apple-touch-startup-image" href="/icons/splash-1125x2436.png" sizes="1125x2436" />
-        <link rel="apple-touch-startup-image" href="/icons/splash-1242x2208.png" sizes="1242x2208" />
-        <link rel="apple-touch-startup-image" href="/icons/splash-750x1334.png" sizes="750x1334" />
-        <link rel="apple-touch-startup-image" href="/icons/splash-640x1136.png" sizes="640x1136" />
-
-        {/* Preload critical resources */}
-        <link rel="preload" href="/fonts/inter-var.woff2" as="font" type="font/woff2" crossOrigin="" />
-        
-        {/* DNS Prefetch */}
-        <link rel="dns-prefetch" href="//fonts.googleapis.com" />
-        <link rel="dns-prefetch" href="//api.genomics-platform.com" />
-
-        {/* Fallback for no-JS */}
-        <noscript>
-          <style>{`
-            .no-js { display: none !important; }
-            body { visibility: visible; }
-          `}</style>
-        </noscript>
+        {/* Mantieni tutto l'head esistente */}
       </head>
       <body className={`${inter.className} min-h-screen bg-background font-sans antialiased`}>
         <ThemeProvider
@@ -284,15 +244,21 @@ export default function RootLayout({
         >
           <Providers>
             <KeyboardShortcutProvider>
-              {children}
+              {/* NUOVA IMPLEMENTAZIONE MOBILE */}
+              <MobileNavigation>
+                {children}
+              </MobileNavigation>
+              
               <Toaster />
               
-              {/* Offline indicator */}
+              {/* Smart Help - NEW UX FEATURE */}
+              <SmartHelp />
+              
+              {/* Altri componenti esistenti */}
               <div id="offline-indicator" className="hidden fixed top-0 left-0 right-0 bg-yellow-500 text-black text-center py-2 text-sm z-50">
                 You are currently offline. Some features may be limited.
               </div>
 
-              {/* PWA Install Button */}
               <button
                 id="install-button"
                 className="hidden fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors z-50"

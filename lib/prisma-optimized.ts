@@ -1,4 +1,4 @@
-// lib/prisma-optimized.ts
+// lib/prisma-optimized.ts - VERSIONE CORRETTA
 import { PrismaClient, Prisma } from '@prisma/client';
 import { createLogger } from '@/lib/logger';
 
@@ -242,7 +242,7 @@ class EnhancedPrismaClient extends PrismaClient {
   }
 }
 
-// Global instance management
+// Global instance management con FIX per event listeners
 const globalForPrisma = globalThis as unknown as {
   prisma: EnhancedPrismaClient | undefined;
   shutdownHandlersSetup?: boolean;
@@ -262,12 +262,12 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
-// Setup graceful shutdown handlers only once globally
+// Setup graceful shutdown handlers only once globally - FIX APPLICATO QUI
 if (!globalForPrisma.shutdownHandlersSetup) {
   globalForPrisma.shutdownHandlersSetup = true;
   
-  // Increase max listeners to prevent warnings
-  process.setMaxListeners(30);
+  // Set max listeners to prevent warnings - QUESTO È IL FIX
+  process.setMaxListeners(50);
   
   const gracefulShutdown = async (signal: string) => {
     logger.info(`Received ${signal}, disconnecting Prisma...`);
@@ -280,20 +280,32 @@ if (!globalForPrisma.shutdownHandlersSetup) {
     }
   };
 
-  // Only add listeners once
-  const existingListeners = process.listenerCount('SIGINT');
-  if (existingListeners === 0) {
+  // Check if listeners already exist before adding them - ALTRO FIX
+  const existingSigintListeners = process.listenerCount('SIGINT');
+  const existingSigtermListeners = process.listenerCount('SIGTERM');
+  
+  if (existingSigintListeners === 0) {
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  }
+  
+  if (existingSigtermListeners === 0) {
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  }
 
-    // Handle uncaught exceptions (only in production)
-    if (process.env.NODE_ENV === 'production') {
+  // Handle uncaught exceptions (only in production) - CON CONTROLLI
+  if (process.env.NODE_ENV === 'production') {
+    const existingUncaughtListeners = process.listenerCount('uncaughtException');
+    const existingUnhandledListeners = process.listenerCount('unhandledRejection');
+    
+    if (existingUncaughtListeners === 0) {
       process.on('uncaughtException', async (error) => {
         logger.error('Uncaught exception', error);
         await prisma.disconnectGracefully();
         process.exit(1);
       });
+    }
 
+    if (existingUnhandledListeners === 0) {
       process.on('unhandledRejection', async (reason, promise) => {
         logger.error('Unhandled rejection', { reason, promise });
         await prisma.disconnectGracefully();

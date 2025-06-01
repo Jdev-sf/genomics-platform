@@ -13,7 +13,9 @@ import {
   FileText,
   Brain,
   Zap,
-  AlertTriangle
+  AlertTriangle,
+  Download,
+  TrendingUp
 } from 'lucide-react';
 import { ModernHeader } from '@/components/layout/modern-header';
 import { 
@@ -37,6 +39,15 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+
+// NEW UX COMPONENTS
+import { GeneStatisticsChart } from '@/components/charts/gene-statistics-chart';
+import { VariantStatisticsChart } from '@/components/charts/variant-statistics-chart';
+import { QuickHelp, DetailedHelp, HelpSuggestions } from '@/components/contextual-help';
+import { useGeneStatistics, useVariantStatistics } from '@/hooks/use-chart-data';
 
 interface DashboardStats {
   totalGenes: number;
@@ -52,6 +63,10 @@ export default function HomePage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // NEW: Fetch chart data
+  const { data: geneStats, isLoading: geneStatsLoading } = useGeneStatistics();
+  const { data: variantStats, isLoading: variantStatsLoading } = useVariantStatistics();
 
   useEffect(() => {
     fetchDashboardData();
@@ -128,6 +143,102 @@ export default function HomePage() {
     }
   ];
 
+  // Mock data for charts
+  const mockGeneStats = {
+    chromosomeDistribution: [
+      { chromosome: '1', count: 2145, pathogenic: 234 },
+      { chromosome: '2', count: 1876, pathogenic: 198 },
+      { chromosome: '3', count: 1654, pathogenic: 176 },
+      { chromosome: '4', count: 1432, pathogenic: 145 },
+      { chromosome: '5', count: 1234, pathogenic: 123 },
+      { chromosome: '6', count: 1098, pathogenic: 98 },
+      { chromosome: '7', count: 987, pathogenic: 87 },
+      { chromosome: '8', count: 876, pathogenic: 76 },
+      { chromosome: '9', count: 765, pathogenic: 65 },
+      { chromosome: '10', count: 654, pathogenic: 54 },
+      { chromosome: 'X', count: 543, pathogenic: 43 },
+      { chromosome: 'Y', count: 432, pathogenic: 32 },
+    ],
+    biotypeDistribution: [
+      { biotype: 'protein_coding', count: 15432, percentage: 75.6 },
+      { biotype: 'lncRNA', count: 3234, percentage: 15.8 },
+      { biotype: 'miRNA', count: 1876, percentage: 9.2 },
+      { biotype: 'pseudogene', count: 876, percentage: 4.3 },
+      { biotype: 'snoRNA', count: 543, percentage: 2.7 },
+    ],
+    variantCounts: [
+      { geneSymbol: 'BRCA1', totalVariants: 1245, pathogenicVariants: 234, chromosome: '17' },
+      { geneSymbol: 'TP53', totalVariants: 987, pathogenicVariants: 178, chromosome: '17' },
+      { geneSymbol: 'EGFR', totalVariants: 876, pathogenicVariants: 145, chromosome: '7' },
+      { geneSymbol: 'KRAS', totalVariants: 765, pathogenicVariants: 123, chromosome: '12' },
+      { geneSymbol: 'PIK3CA', totalVariants: 654, pathogenicVariants: 98, chromosome: '3' },
+    ],
+    clinicalSignificance: [
+      { significance: 'Pathogenic', count: 8765, percentage: 12.3 },
+      { significance: 'Likely pathogenic', count: 5432, percentage: 7.6 },
+      { significance: 'Uncertain significance', count: 23456, percentage: 32.8 },
+      { significance: 'Likely benign', count: 18765, percentage: 26.2 },
+      { significance: 'Benign', count: 15234, percentage: 21.3 },
+    ],
+    trends: [
+      { date: '2023-07', newGenes: 1250, newVariants: 15420, pathogenicDiscovered: 234 },
+      { date: '2023-08', newGenes: 1180, newVariants: 16800, pathogenicDiscovered: 187 },
+      { date: '2023-09', newGenes: 1350, newVariants: 18200, pathogenicDiscovered: 298 },
+      { date: '2023-10', newGenes: 1420, newVariants: 19500, pathogenicDiscovered: 312 },
+      { date: '2023-11', newGenes: 1380, newVariants: 21000, pathogenicDiscovered: 278 },
+      { date: '2023-12', newGenes: 1500, newVariants: 22800, pathogenicDiscovered: 345 },
+    ]
+  };
+
+  const mockVariantStats = {
+    chromosomeDistribution: [
+      { chromosome: '1', count: 45678, pathogenic: 3456, benign: 23456 },
+      { chromosome: '2', count: 43210, pathogenic: 3210, benign: 22100 },
+      { chromosome: '3', count: 38765, pathogenic: 2876, benign: 19876 },
+      { chromosome: '4', count: 35432, pathogenic: 2543, benign: 18234 },
+      { chromosome: '5', count: 32109, pathogenic: 2210, benign: 16543 },
+    ],
+    clinicalSignificance: [
+      { significance: 'Pathogenic', count: 8765, percentage: 12.3 },
+      { significance: 'Likely pathogenic', count: 5432, percentage: 7.6 },
+      { significance: 'Uncertain significance', count: 23456, percentage: 32.8 },
+      { significance: 'Likely benign', count: 18765, percentage: 26.2 },
+      { significance: 'Benign', count: 15234, percentage: 21.3 },
+    ],
+    impactDistribution: [
+      { impact: 'HIGH', count: 5432, percentage: 8.1 },
+      { impact: 'MODERATE', count: 12345, percentage: 18.4 },
+      { impact: 'LOW', count: 23456, percentage: 34.9 },
+      { impact: 'MODIFIER', count: 25987, percentage: 38.6 },
+    ],
+    variantTypes: [
+      { type: 'SNV', count: 45678, percentage: 68.2 },
+      { type: 'INDEL', count: 12345, percentage: 18.4 },
+      { type: 'CNV', count: 5432, percentage: 8.1 },
+      { type: 'SV', count: 3456, percentage: 5.3 },
+    ],
+    frequencyDistribution: [
+      { range: 'Ultra rare (<0.01%)', count: 45678, averageFrequency: 0.00005 },
+      { range: 'Very rare (0.01-0.1%)', count: 12345, averageFrequency: 0.0005 },
+      { range: 'Rare (0.1-1%)', count: 8765, averageFrequency: 0.005 },
+      { range: 'Low frequency (1-5%)', count: 3456, averageFrequency: 0.025 },
+      { range: 'Common (>5%)', count: 2345, averageFrequency: 0.15 },
+    ],
+    geneImpact: [
+      { geneSymbol: 'BRCA1', chromosome: '17', totalVariants: 1245, pathogenicCount: 234, highImpactCount: 198 },
+      { geneSymbol: 'TP53', chromosome: '17', totalVariants: 987, pathogenicCount: 178, highImpactCount: 145 },
+      { geneSymbol: 'EGFR', chromosome: '7', totalVariants: 876, pathogenicCount: 145, highImpactCount: 112 },
+    ],
+    trends: [
+      { date: '2023-07', totalVariants: 125000, pathogenicVariants: 8500, clinicallySignificant: 15200 },
+      { date: '2023-08', totalVariants: 142000, pathogenicVariants: 9200, clinicallySignificant: 16800 },
+      { date: '2023-09', totalVariants: 158000, pathogenicVariants: 10100, clinicallySignificant: 18500 },
+      { date: '2023-10', totalVariants: 176000, pathogenicVariants: 11200, clinicallySignificant: 20200 },
+      { date: '2023-11', totalVariants: 195000, pathogenicVariants: 12500, clinicallySignificant: 22100 },
+      { date: '2023-12', totalVariants: 215000, pathogenicVariants: 13800, clinicallySignificant: 24300 },
+    ]
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
@@ -149,17 +260,24 @@ export default function HomePage() {
       <ModernHeader />
       
       <main className="container mx-auto py-8 px-4 space-y-8">
-        {/* Welcome Section */}
+        {/* Welcome Section with Contextual Help */}
         <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-600 dark:from-white dark:via-gray-200 dark:to-gray-400 bg-clip-text text-transparent">
-            Genomics Platform Dashboard
-          </h1>
+          <div className="flex items-center justify-center gap-2">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-600 dark:from-white dark:via-gray-200 dark:to-gray-400 bg-clip-text text-transparent">
+              Genomics Platform Dashboard
+            </h1>
+            <QuickHelp 
+              topic="keyboard-shortcuts" 
+              trigger="icon"
+              className="ml-2"
+            />
+          </div>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             AI-powered genomic analysis and visualization platform for researchers and clinicians
           </p>
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats Cards with Help */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Total Genes"
@@ -179,15 +297,20 @@ export default function HomePage() {
             color="green"
             subtitle="Catalogued variations"
           />
-          <StatCard
-            title="Pathogenic Variants"
-            value={stats?.pathogenicVariants || 0}
-            change={-2}
-            changeLabel="from last month"
-            icon={AlertTriangle}
-            color="red"
-            subtitle="Clinical significance"
-          />
+          <div className="relative">
+            <StatCard
+              title="Pathogenic Variants"
+              value={stats?.pathogenicVariants || 0}
+              change={-2}
+              changeLabel="from last month"
+              icon={AlertTriangle}
+              color="red"
+              subtitle="Clinical significance"
+            />
+            <div className="absolute top-2 right-2">
+              <QuickHelp topic="clinical-significance" />
+            </div>
+          </div>
           <StatCard
             title="AI Annotations"
             value={stats?.totalAnnotations || 0}
@@ -224,7 +347,10 @@ export default function HomePage() {
           {/* Variants by Chromosome */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold">Variants by Chromosome</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold">Variants by Chromosome</h3>
+                <QuickHelp topic="allele-frequency" />
+              </div>
               <BarChart3 className="h-5 w-5 text-muted-foreground" />
             </div>
             <ResponsiveContainer width="100%" height={300}>
@@ -247,7 +373,10 @@ export default function HomePage() {
           {/* Clinical Significance */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold">Clinical Significance</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold">Clinical Significance</h3>
+                <DetailedHelp topic="clinical-significance" trigger="icon" />
+              </div>
               <FileText className="h-5 w-5 text-muted-foreground" />
             </div>
             <ResponsiveContainer width="100%" height={300}>
@@ -336,6 +465,68 @@ export default function HomePage() {
             </LineChart>
           </ResponsiveContainer>
         </div>
+
+        {/* Advanced Data Visualization - NEW UX FEATURE */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-semibold">Advanced Analytics</h2>
+              <QuickHelp topic="variant-impact" />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge variant="outline" className="flex items-center gap-1">
+                <TrendingUp className="h-3 w-3" />
+                Real-time
+              </Badge>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Export Charts
+              </Button>
+            </div>
+          </div>
+
+          <Tabs defaultValue="genes" className="space-y-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="genes" className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Gene Analytics
+              </TabsTrigger>
+              <TabsTrigger value="variants" className="flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                Variant Analytics
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="genes" className="space-y-4">
+              {geneStatsLoading ? (
+                <div className="flex items-center justify-center h-96">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <GeneStatisticsChart 
+                  data={geneStats || mockGeneStats} 
+                  className="animate-fade-in"
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="variants" className="space-y-4">
+              {variantStatsLoading ? (
+                <div className="flex items-center justify-center h-96">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <VariantStatisticsChart 
+                  data={variantStats || mockVariantStats} 
+                  className="animate-fade-in"
+                />
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Context-aware Help for this page */}
+        <HelpSuggestions page="dashboard" />
       </main>
     </div>
   );
