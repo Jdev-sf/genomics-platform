@@ -1,8 +1,9 @@
-// components/mobile/mobile-navigation.tsx
+// components/mobile/mobile-navigation.tsx - CORRETTO
 'use client';
 
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { 
   Home, 
@@ -16,13 +17,27 @@ import {
   User,
   X,
   Settings,
-  HelpCircle
+  HelpCircle,
+  LogOut,
+  Moon,
+  Sun,
+  Monitor,
+  ChevronDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useSession } from 'next-auth/react';
 import { SmartSearch } from '@/components/smart-search';
 import { HelpSuggestions } from '@/components/contextual-help';
+import { useTheme } from '@/components/theme-provider';
+import { UserRoleIndicator } from '@/components/user-role-indicator';
+import { ModernHeader } from '@/components/layout/modern-header';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface NavigationItem {
   name: string;
@@ -47,6 +62,7 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
+  const { theme, setTheme } = useTheme();
   
   const [isMobile, setIsMobile] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -83,14 +99,23 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
     setShowSearch(false);
   }, [pathname]);
 
-  // Don't render mobile navigation on desktop
-  if (!isMobile) {
-    return <>{children}</>;
-  }
-
   const getCurrentPageName = () => {
     const item = navigationItems.find(item => item.href === pathname);
     return item?.name || 'Genomics Platform';
+  };
+
+  const handleSignOut = async () => {
+    await signOut({ callbackUrl: '/auth/login' });
+  };
+
+  const handleProfileClick = () => {
+    router.push('/profile');
+    setSidebarOpen(false);
+  };
+
+  const handleSettingsClick = () => {
+    router.push('/settings');
+    setSidebarOpen(false);
   };
 
   const quickActions = [
@@ -121,10 +146,21 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
     },
   ];
 
+  // Render desktop version with original ModernHeader
+  if (!isMobile) {
+    return (
+      <>
+        <ModernHeader />
+        {children}
+      </>
+    );
+  }
+
+  // Mobile version - render our custom mobile header
   return (
     <>
-      {/* Mobile Header */}
-      <header className="lg:hidden bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 px-4 py-3 sticky top-0 z-40">
+      {/* Mobile Header - UNICO HEADER PER MOBILE */}
+      <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 px-4 py-3 sticky top-0 z-40">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Button
@@ -149,6 +185,30 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
             >
               <Search className="h-5 w-5" />
             </Button>
+
+            {/* Theme Toggle */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="p-2">
+                  <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                  <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setTheme('light')}>
+                  <Sun className="mr-2 h-4 w-4" />
+                  Light
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme('dark')}>
+                  <Moon className="mr-2 h-4 w-4" />
+                  Dark
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme('system')}>
+                  <Monitor className="mr-2 h-4 w-4" />
+                  System
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             
             <Button variant="ghost" size="sm" className="p-2 relative">
               <Bell className="h-5 w-5" />
@@ -157,7 +217,42 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
               </Badge>
             </Button>
             
-            {session && (
+            {/* Profile Dropdown */}
+            {session ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="p-2 flex items-center gap-1">
+                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                      {session.user?.name?.charAt(0) || 'U'}
+                    </div>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-3 py-2">
+                    <p className="font-medium">{session.user?.name}</p>
+                    <p className="text-sm text-muted-foreground">{session.user?.email}</p>
+                    <div className="mt-1">
+                      <UserRoleIndicator />
+                    </div>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleProfileClick}>
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleSettingsClick}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
               <Button variant="ghost" size="sm" className="p-2">
                 <User className="h-5 w-5" />
               </Button>
@@ -168,7 +263,7 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black bg-opacity-50">
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50">
           <div className="fixed inset-y-0 left-0 w-80 bg-white dark:bg-slate-900 shadow-xl">
             <div className="p-4 border-b border-gray-200 dark:border-slate-700">
               <div className="flex items-center justify-between mb-4">
@@ -190,9 +285,9 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-medium truncate">{session.user?.name}</p>
-                    <p className="text-sm text-gray-500 dark:text-slate-400 truncate">
-                      {session.user?.role?.name}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <UserRoleIndicator />
+                    </div>
                   </div>
                 </div>
               )}
@@ -232,21 +327,45 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
               {/* Additional menu items */}
               <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
                 <ul className="space-y-2">
-                  <li>
-                    <Link
-                      href="/settings"
-                      className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      <Settings className="h-5 w-5" />
-                      <span>Settings</span>
-                    </Link>
-                  </li>
+                  {session && (
+                    <>
+                      <li>
+                        <button
+                          onClick={handleProfileClick}
+                          className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          <User className="h-5 w-5" />
+                          <span>Profile</span>
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          onClick={handleSettingsClick}
+                          className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          <Settings className="h-5 w-5" />
+                          <span>Settings</span>
+                        </button>
+                      </li>
+                    </>
+                  )}
                   <li>
                     <button className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
                       <HelpCircle className="h-5 w-5" />
                       <span>Help & Support</span>
                     </button>
                   </li>
+                  {session && (
+                    <li>
+                      <button
+                        onClick={handleSignOut}
+                        className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 transition-colors"
+                      >
+                        <LogOut className="h-5 w-5" />
+                        <span>Sign Out</span>
+                      </button>
+                    </li>
+                  )}
                 </ul>
               </div>
             </nav>
@@ -256,7 +375,7 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
 
       {/* Full-screen Search Overlay */}
       {showSearch && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-white dark:bg-slate-900">
+        <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900">
           <div className="p-4 border-b border-gray-200 dark:border-slate-700">
             <div className="flex items-center space-x-3">
               <Button
@@ -302,20 +421,19 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="lg:container lg:mx-auto pb-20 lg:pb-0">
+      {/* Main Content - SENZA ModernHeader per mobile */}
+      <main className="pb-20">
         {children}
       </main>
 
       {/* Floating Action Button */}
       {showFAB && (
-        <div className="lg:hidden fixed bottom-20 right-4 z-30">
+        <div className="fixed bottom-20 right-4 z-30">
           <div className="relative">
             <Button
               size="lg"
               className="rounded-full h-14 w-14 shadow-lg bg-blue-600 hover:bg-blue-700"
               onClick={() => {
-                // Toggle quick actions menu or primary action
                 if (session) {
                   router.push('/import');
                 } else {
@@ -325,29 +443,12 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
             >
               <Plus className="h-6 w-6" />
             </Button>
-            
-            {/* Quick actions on long press */}
-            <div className="absolute bottom-16 right-0 space-y-2 opacity-0 pointer-events-none transition-opacity">
-              {quickActions.slice(0, 3).map((action, index) => {
-                const Icon = action.icon;
-                return (
-                  <Button
-                    key={index}
-                    size="sm"
-                    className={`rounded-full h-10 w-10 shadow-md ${action.color}`}
-                    onClick={action.action}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </Button>
-                );
-              })}
-            </div>
           </div>
         </div>
       )}
 
       {/* Bottom Tab Navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 safe-area-inset-bottom z-40">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 safe-area-inset-bottom z-40">
         <div className="grid grid-cols-4">
           {navigationItems.map((item) => {
             const Icon = item.icon;

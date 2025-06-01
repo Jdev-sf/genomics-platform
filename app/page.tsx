@@ -257,7 +257,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      <ModernHeader />
+      
       
       <main className="container mx-auto py-8 px-4 space-y-8">
         {/* Welcome Section with Contextual Help */}
