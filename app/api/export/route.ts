@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import prisma from '@/lib/prisma-optimized';
 
 const exportSchema = z.object({
   type: z.enum(['genes', 'variants']),

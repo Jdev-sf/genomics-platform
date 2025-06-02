@@ -1,6 +1,6 @@
 // scripts/init-cache.ts
 import { CacheUtils } from '@/lib/cache/setup';
-import { ServiceCacheManager } from '@/lib/container/service-registry';
+import { ServiceCacheManager } from '@/lib/container/optimized-service-registry';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger({ requestId: 'cache-init' });

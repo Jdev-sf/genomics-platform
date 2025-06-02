@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/components/ui/use-toast';
 import { ModernHeader } from '@/components/layout/modern-header';
 import { useVariants, usePrefetchVariantDetail } from '@/hooks/queries/use-variants';
 
@@ -37,6 +36,7 @@ import {
 } from '@/components/bulk-operations';
 import { Checkbox } from '@/components/ui/checkbox';
 import { QuickHelp, DetailedHelp, HelpSuggestions } from '@/components/contextual-help';
+import { useToast } from '@/hooks/use-toast';
 
 const clinicalSignificanceColors: Record<string, string> = {
   'Pathogenic': 'bg-red-100 text-red-800 border-red-200',

@@ -1,7 +1,7 @@
 // app/api/import/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
-import { getGeneService, getVariantService } from '@/lib/container/service-registry';
+import { getGeneService, getVariantService } from '@/lib/container/optimized-service-registry';
 import { validateFileUpload, addSecurityHeaders } from '@/lib/validation';
 import { VCFParser } from '@/lib/vcf-parser';
 

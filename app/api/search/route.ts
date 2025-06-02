@@ -1,7 +1,7 @@
 // app/api/search/route.ts - Updated with Caching  
 import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
-import { getCachedGeneService, getCachedVariantService } from '@/lib/container/service-registry';
+import { getCachedGeneService, getCachedVariantService } from '@/lib/container/optimized-service-registry';
 import { validateRequest, searchSchema, addSecurityHeaders } from '@/lib/validation';
 import { withApiCache, ApiCachePresets } from '@/lib/middleware/cache-middleware';
 

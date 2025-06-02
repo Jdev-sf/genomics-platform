@@ -1,9 +1,9 @@
 // app/api/ai/insights/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
 import { aiService } from '@/lib/ai-services';
 import { z } from 'zod';
+import prisma from '@/lib/prisma-optimized';
 
 const insightsSchema = z.object({
   gene_symbol: z.string().min(1),

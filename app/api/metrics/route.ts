@@ -5,7 +5,7 @@ import { applicationMetrics, prometheusExporter } from '@/lib/metrics';
 import { withRateLimit } from '@/lib/rate-limit-simple';
 import { addSecurityHeaders } from '@/lib/validation';
 import { createLogger } from '@/lib/logger';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma-optimized;
 
 async function metricsHandler(request: NextRequest) {
   const logger = createLogger({ requestId: 'metrics-api' });

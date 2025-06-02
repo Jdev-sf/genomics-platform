@@ -159,7 +159,7 @@ export class CacheUtils {
     
     try {
       // Import services dynamically to avoid circular dependencies
-      const { getGeneService, getVariantService } = await import('@/lib/container/service-registry');
+      const { getGeneService, getVariantService } = await import('@/lib/container/optimized-service-registry');
       
       const geneService = await getGeneService();
       const variantService = await getVariantService();

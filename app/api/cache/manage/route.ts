@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { CacheUtils } from '@/lib/cache/setup';
-import { ServiceCacheManager } from '@/lib/container/service-registry';
+import { ServiceCacheManager } from '@/lib/container/optimized-service-registry';
 import { addSecurityHeaders } from '@/lib/validation';
 import { createLogger } from '@/lib/logger';
 

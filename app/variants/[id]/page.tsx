@@ -35,8 +35,8 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { useToast } from '@/components/ui/use-toast';
 import { ModernHeader } from '@/components/layout/modern-header';
+import { useToast } from '@/hooks/use-toast';
 
 interface VariantGene {
   id: string;

@@ -15,11 +15,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useToast } from '@/components/ui/use-toast';
-import { ModernHeader } from '@/components/layout/modern-header';
 
 // NEW UX COMPONENTS
 import { ProgressiveImport } from '@/components/progressive-import';
+import { useToast } from '@/hooks/use-toast';
 
 interface ValidationError {
   row: number;

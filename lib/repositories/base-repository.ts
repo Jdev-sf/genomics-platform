@@ -1,6 +1,6 @@
 // lib/repositories/base-repository.ts
 import { PrismaClient, Prisma } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma-optimized;
 import { createLogger } from '@/lib/logger';
 import { AppError, ErrorCode } from '@/lib/errors';
 
