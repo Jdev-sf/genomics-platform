@@ -37,6 +37,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { ModernHeader } from '@/components/layout/modern-header';
 import { useToast } from '@/hooks/use-toast';
+import { GeneBrowser } from '@/components/gene-browser';
 
 interface Annotation {
   id: string;
@@ -451,6 +452,7 @@ export default function GeneDetailPage({ params }: { params: Promise<{ id: strin
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="variants">Variants ({gene.variants.length})</TabsTrigger>
             <TabsTrigger value="statistics">Statistics</TabsTrigger>
+            <TabsTrigger value="browser">Genome Browser</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
@@ -685,6 +687,33 @@ export default function GeneDetailPage({ params }: { params: Promise<{ id: strin
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="browser" className="space-y-4">
+  {gene && gene.variants && (
+    <GeneBrowser
+      gene={{
+        id: gene.id,
+        symbol: gene.symbol,
+        name: gene.name,
+        chromosome: gene.chromosome,
+        startPosition: gene.start_position ? parseInt(gene.start_position) : 0,
+        endPosition: gene.end_position ? parseInt(gene.end_position) : 0,
+        strand: gene.strand || '+',
+        variants: gene.variants.map(variant => ({
+          id: variant.id,
+          position: parseInt(variant.position),
+          ref: variant.reference_allele,
+          alt: variant.alternate_allele,
+          clinicalSignificance: variant.clinical_significance || 'Unknown',
+          consequence: variant.consequence || 'Unknown',
+          frequency: variant.frequency || 0,
+        }))
+      }}
+      width={800}
+      height={400}
+    />
+  )}
+</TabsContent>
         </Tabs>
       </div>
     </div>
