@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { signIn, getSession } from 'next-auth/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -36,29 +36,29 @@ export default function LoginPage() {
   const [guestLoading, setGuestLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-    setLoginLoading(true);
+  e.preventDefault();
+  setLoginError('');
+  setLoginLoading(true);
 
-    try {
-      const result = await signIn('credentials', {
-        email: loginEmail,
-        password: loginPassword,
-        redirect: false,
-      });
+  try {
+    const result = await signIn('credentials', {
+      email: loginEmail,
+      password: loginPassword,
+      redirect: false,
+    });
 
-      if (result?.error) {
-        setLoginError('Invalid email or password');
-      } else {
-        router.push('/');
-        router.refresh();
-      }
-    } catch (error) {
-      setLoginError('An error occurred. Please try again.');
-    } finally {
-      setLoginLoading(false);
+    if (result?.error) {
+      setLoginError('Invalid email or password');
+    } else if (result?.ok) {
+      // Redirect manually after successful login
+      window.location.href = '/';
     }
-  };
+  } catch (error) {
+    setLoginError('An error occurred during login. Please try again.');
+  } finally {
+    setLoginLoading(false);
+  }
+};
 
   const handleRegistration = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,8 +148,8 @@ export default function LoginPage() {
         description: 'You are now browsing as a guest user.',
       });
 
-      router.push('/');
-      router.refresh();
+      // Force redirect
+      window.location.href = '/';
 
     } catch (error) {
       toast({

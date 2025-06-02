@@ -135,7 +135,7 @@ export function setupGracefulShutdown() {
       logger.info('Performing cleanup operations...');
       
       // Close database connections
-      const { prisma } = await import('./prisma');
+      const { prisma } = await import('./prisma-optimized');
       await prisma.$disconnect();
       logger.info('Database connections closed');
       

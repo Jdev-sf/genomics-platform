@@ -1,14 +1,23 @@
 // lib/auth.ts
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { PrismaAdapter } from '@auth/prisma-adapter';
-import { prisma } from './prisma';
 import bcrypt from 'bcryptjs';
+import prisma from './prisma-optimized';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: PrismaAdapter(prisma),
   session: {
     strategy: 'jwt',
+  },
+  cookies: {
+    sessionToken: {
+      name: 'next-auth.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
   },
   providers: [
     Credentials({
@@ -21,78 +30,55 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-          include: { role: true },
-        });
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email as string },
+            include: { role: true },
+          });
 
-        if (!user || !user.passwordHash) {
+          if (!user || !user.passwordHash) {
+            return null;
+          }
+
+          const isValid = await bcrypt.compare(
+            credentials.password as string,
+            user.passwordHash
+          );
+
+          if (!isValid) {
+            return null;
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: JSON.stringify(user.role),
+          };
+        } catch (error) {
+          console.error('Auth error:', error);
           return null;
         }
-
-        const isValid = await bcrypt.compare(
-          credentials.password as string,
-          user.passwordHash
-        );
-
-        if (!isValid) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          emailVerified: user.emailVerified,
-          role: user.role,
-        } as any;
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          include: { role: true },
-        });
-        if (dbUser) {
-          token.id = dbUser.id;
-          token.role = dbUser.role;
-        }
+      if (user?.id) {
+        token.id = user.id;
+        token.role = user.role ? JSON.parse(user.role as string) : null;
       }
       return token;
     },
     async session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.id as string;
+      if (token?.id && session.user) {
+        session.user.id = token.id;
         session.user.role = token.role as any;
       }
       return session;
     },
-    async redirect({ url, baseUrl }) {
-      // Handle callback URLs
-      if (url.startsWith('/')) {
-        return `${baseUrl}${url}`;
-      }
-      // Handle external URLs
-      if (new URL(url).origin === baseUrl) {
-        return url;
-      }
-      return baseUrl;
-    },
   },
   pages: {
     signIn: '/auth/login',
-  },
-  events: {
-    async signIn({ user }) {
-      // Log successful sign-ins
-      console.log(`User ${user.email} signed in`);
-    },
-    async signOut() {
-      // Log sign-outs
-      console.log(`User signed out`);
-    },
   },
 });

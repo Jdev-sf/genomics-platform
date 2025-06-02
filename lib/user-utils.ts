@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { prisma } from './prisma';
+import { prisma } from './prisma-optimized';
 
 export async function createUser(
   email: string,

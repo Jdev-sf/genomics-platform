@@ -1,4 +1,4 @@
-// components/mobile/mobile-navigation.tsx - RIMOSSO FAB
+// components/mobile/mobile-navigation.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -60,12 +60,15 @@ interface MobileNavigationProps {
 export function MobileNavigation({ children }: MobileNavigationProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const { theme, setTheme } = useTheme();
   
   const [isMobile, setIsMobile] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Check if we're on auth pages
+  const isAuthPage = pathname.startsWith('/auth');
 
   // Detect mobile device
   useEffect(() => {
@@ -130,6 +133,16 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
       color: 'bg-orange-500 hover:bg-orange-600',
     },
   ];
+
+  // Don't render navigation on auth pages or when session is loading
+  if (isAuthPage || status === 'loading') {
+    return <>{children}</>;
+  }
+
+  // If no session, just render children (middleware will redirect)
+  if (!session) {
+    return <>{children}</>;
+  }
 
   // Render desktop version with original ModernHeader
   if (!isMobile) {
@@ -203,45 +216,39 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
             </Button>
             
             {/* Profile Dropdown */}
-            {session ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="p-2 flex items-center gap-1">
-                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
-                      {session.user?.name?.charAt(0) || 'U'}
-                    </div>
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <div className="px-3 py-2">
-                    <p className="font-medium">{session.user?.name}</p>
-                    <p className="text-sm text-muted-foreground">{session.user?.email}</p>
-                    <div className="mt-1">
-                      <UserRoleIndicator />
-                    </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="p-2 flex items-center gap-1">
+                  <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                    {session.user?.name?.charAt(0) || 'U'}
                   </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleProfileClick}>
-                    <User className="mr-2 h-4 w-4" />
-                    Profile
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSettingsClick}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button variant="ghost" size="sm" className="p-2">
-                <User className="h-5 w-5" />
-              </Button>
-            )}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <div className="px-3 py-2">
+                  <p className="font-medium">{session.user?.name}</p>
+                  <p className="text-sm text-muted-foreground">{session.user?.email}</p>
+                  <div className="mt-1">
+                    <UserRoleIndicator />
+                  </div>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleProfileClick}>
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSettingsClick}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -263,19 +270,17 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
                 </Button>
               </div>
               
-              {session && (
-                <div className="flex items-center space-x-3 p-3 bg-gray-100 dark:bg-slate-800 rounded-lg">
-                  <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                    {session.user?.name?.charAt(0) || 'U'}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium truncate">{session.user?.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <UserRoleIndicator />
-                    </div>
+              <div className="flex items-center space-x-3 p-3 bg-gray-100 dark:bg-slate-800 rounded-lg">
+                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+                  {session.user?.name?.charAt(0) || 'U'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium truncate">{session.user?.name}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <UserRoleIndicator />
                   </div>
                 </div>
-              )}
+              </div>
             </div>
 
             <nav className="p-4">
@@ -312,45 +317,39 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
               {/* Additional menu items */}
               <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
                 <ul className="space-y-2">
-                  {session && (
-                    <>
-                      <li>
-                        <button
-                          onClick={handleProfileClick}
-                          className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-                        >
-                          <User className="h-5 w-5" />
-                          <span>Profile</span>
-                        </button>
-                      </li>
-                      <li>
-                        <button
-                          onClick={handleSettingsClick}
-                          className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-                        >
-                          <Settings className="h-5 w-5" />
-                          <span>Settings</span>
-                        </button>
-                      </li>
-                    </>
-                  )}
+                  <li>
+                    <button
+                      onClick={handleProfileClick}
+                      className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <User className="h-5 w-5" />
+                      <span>Profile</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={handleSettingsClick}
+                      className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Settings className="h-5 w-5" />
+                      <span>Settings</span>
+                    </button>
+                  </li>
                   <li>
                     <button className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
                       <HelpCircle className="h-5 w-5" />
                       <span>Help & Support</span>
                     </button>
                   </li>
-                  {session && (
-                    <li>
-                      <button
-                        onClick={handleSignOut}
-                        className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 transition-colors"
-                      >
-                        <LogOut className="h-5 w-5" />
-                        <span>Sign Out</span>
-                      </button>
-                    </li>
-                  )}
+                  <li>
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 transition-colors"
+                    >
+                      <LogOut className="h-5 w-5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </li>
                 </ul>
               </div>
             </nav>
@@ -410,8 +409,6 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
       <main className="pb-20">
         {children}
       </main>
-
-      {/* RIMOSSO: Floating Action Button per evitare sovrapposizioni */}
 
       {/* Bottom Tab Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 safe-area-inset-bottom z-40">

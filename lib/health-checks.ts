@@ -1,5 +1,5 @@
 // lib/health-checks.ts
-import { prisma } from './prisma';
+import { prisma } from './prisma-optimized';
 import { createLogger } from './logger';
 
 export interface HealthCheckResult {

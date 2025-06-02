@@ -25,10 +25,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useTheme } from '@/components/theme-provider';
-import { GlobalSearch } from '@/components/global-search';
 import { useDebounce } from '@/hooks/use-debounce';
 import { signOut } from 'next-auth/react';
 import { UserRoleIndicator } from '../user-role-indicator';
+import { SmartSearch } from '../smart-search';
 
 interface SearchResult {
   id: string;
@@ -185,7 +185,7 @@ export function ModernHeader() {
           <div className="flex items-center space-x-4">
             {/* Global Search - FIX: Rimosso z-index conflittuali */}
             <div className="hidden md:block">
-              <GlobalSearch />
+              <SmartSearch />
             </div>
 
             {/* Mobile Search */}

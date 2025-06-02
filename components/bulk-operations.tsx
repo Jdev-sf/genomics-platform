@@ -23,8 +23,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useToast } from '@/components/ui/use-toast';
 import React from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 interface BulkAction {
   id: string;
