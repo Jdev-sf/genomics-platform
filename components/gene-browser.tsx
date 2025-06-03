@@ -37,21 +37,38 @@ interface GeneBrowserProps {
 export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [viewStart, setViewStart] = useState(gene.startPosition);
-  const [viewEnd, setViewEnd] = useState(gene.endPosition);
+  const [viewStart, setViewStart] = useState(0);
+  const [viewEnd, setViewEnd] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<Variant | null>(null);
   const { toast } = useToast();
 
-  const geneLength = gene.endPosition - gene.startPosition;
-  const viewLength = viewEnd - viewStart;
+  // FIX 1: Validate and set proper default values
+  useEffect(() => {
+    const start = gene.startPosition || 0;
+    const end = gene.endPosition || start + 100000; // Default 100kb if no end position
+    
+    // Ensure valid range
+    if (start >= end) {
+      setViewStart(start);
+      setViewEnd(start + 100000);
+    } else {
+      setViewStart(start);
+      setViewEnd(end);
+    }
+  }, [gene]);
+
+  const geneLength = Math.max(viewEnd - viewStart, 1); // Prevent division by zero
+  const viewLength = Math.max(viewEnd - viewStart, 1);
 
   useEffect(() => {
-    drawGeneBrowser();
+    if (viewStart !== 0 || viewEnd !== 0) {
+      drawGeneBrowser();
+    }
   }, [gene, zoomLevel, viewStart, viewEnd]);
 
   const drawGeneBrowser = () => {
     const svg = svgRef.current;
-    if (!svg) return;
+    if (!svg || viewLength <= 0) return;
 
     // Clear previous content
     while (svg.firstChild) {
@@ -62,25 +79,32 @@ export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProp
     const mainGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     svg.appendChild(mainGroup);
 
-    // Define scales
-    const xScale = (position: number) => 
-      ((position - viewStart) / viewLength) * (width - 100) + 50;
+    // FIX 2: Safe scale function with validation
+    const xScale = (position: number) => {
+      const scaled = ((position - viewStart) / viewLength) * (width - 100) + 50;
+      return isNaN(scaled) ? 50 : Math.max(50, Math.min(width - 50, scaled));
+    };
 
     // Draw chromosome track
     const chromTrack = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     chromTrack.setAttribute('x', '50');
     chromTrack.setAttribute('y', String(height / 2 - 5));
-    chromTrack.setAttribute('width', String(width - 100));
+    chromTrack.setAttribute('width', String(Math.max(0, width - 100)));
     chromTrack.setAttribute('height', '10');
     chromTrack.setAttribute('fill', '#e5e7eb');
     chromTrack.setAttribute('stroke', '#d1d5db');
     mainGroup.appendChild(chromTrack);
 
+    // FIX 3: Safe gene drawing with validation
+    const geneStartX = xScale(Math.max(viewStart, gene.startPosition || viewStart));
+    const geneEndX = xScale(Math.min(viewEnd, gene.endPosition || viewEnd));
+    const geneWidth = Math.max(1, geneEndX - geneStartX);
+
     // Draw gene body
     const geneRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    geneRect.setAttribute('x', String(xScale(gene.startPosition)));
+    geneRect.setAttribute('x', String(geneStartX));
     geneRect.setAttribute('y', String(height / 2 - 15));
-    geneRect.setAttribute('width', String(xScale(gene.endPosition) - xScale(gene.startPosition)));
+    geneRect.setAttribute('width', String(geneWidth));
     geneRect.setAttribute('height', '30');
     geneRect.setAttribute('fill', '#3b82f6');
     geneRect.setAttribute('stroke', '#1e40af');
@@ -88,8 +112,9 @@ export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProp
     mainGroup.appendChild(geneRect);
 
     // Add gene label
+    const geneLabelX = geneStartX + geneWidth / 2;
     const geneLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    geneLabel.setAttribute('x', String(xScale((gene.startPosition + gene.endPosition) / 2)));
+    geneLabel.setAttribute('x', String(geneLabelX));
     geneLabel.setAttribute('y', String(height / 2 - 20));
     geneLabel.setAttribute('text-anchor', 'middle');
     geneLabel.setAttribute('fill', '#1f2937');
@@ -101,7 +126,7 @@ export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProp
 
     // Draw strand indicator
     const strandIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    strandIndicator.setAttribute('x', String(xScale(gene.endPosition) + 10));
+    strandIndicator.setAttribute('x', String(Math.min(width - 30, geneEndX + 10)));
     strandIndicator.setAttribute('y', String(height / 2 + 5));
     strandIndicator.setAttribute('fill', '#6b7280');
     strandIndicator.setAttribute('font-family', 'system-ui');
@@ -109,10 +134,13 @@ export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProp
     strandIndicator.textContent = gene.strand === '+' ? '→' : '←';
     mainGroup.appendChild(strandIndicator);
 
-    // Draw variants
+    // FIX 4: Safe variant drawing with position validation
     gene.variants.forEach((variant) => {
       if (variant.position >= viewStart && variant.position <= viewEnd) {
         const variantX = xScale(variant.position);
+        
+        // Skip if position is invalid
+        if (isNaN(variantX) || variantX < 50 || variantX > width - 50) return;
         
         // Variant marker
         const variantMarker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -144,12 +172,12 @@ export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProp
 
         // Variant frequency bar (if available)
         if (variant.frequency && variant.frequency > 0) {
-          const freqHeight = variant.frequency * 100; // Scale frequency
+          const freqHeight = Math.min(variant.frequency * 100, 30); // Cap at 30px
           const freqBar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
           freqBar.setAttribute('x', String(variantX - 1));
           freqBar.setAttribute('y', String(height / 2 + 10));
           freqBar.setAttribute('width', '2');
-          freqBar.setAttribute('height', String(Math.min(freqHeight, 30)));
+          freqBar.setAttribute('height', String(freqHeight));
           freqBar.setAttribute('fill', '#10b981');
           freqBar.setAttribute('opacity', '0.7');
           mainGroup.appendChild(freqBar);
@@ -168,6 +196,9 @@ export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProp
     for (let i = 0; i < tickCount; i++) {
       const x = 50 + i * tickSpacing;
       const position = Math.round(viewStart + (i / (tickCount - 1)) * viewLength);
+
+      // Skip invalid positions
+      if (isNaN(x) || isNaN(position)) continue;
 
       // Tick mark
       const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -231,17 +262,27 @@ export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProp
     const center = (viewStart + viewEnd) / 2;
     const newLength = viewLength * factor;
     
-    const newStart = Math.max(gene.startPosition, center - newLength / 2);
-    const newEnd = Math.min(gene.endPosition, center + newLength / 2);
+    // FIX 5: Ensure valid zoom bounds
+    const geneStart = gene.startPosition || 0;
+    const geneEnd = gene.endPosition || geneStart + 100000;
     
-    setViewStart(newStart);
-    setViewEnd(newEnd);
-    setZoomLevel(prev => direction === 'in' ? prev * 2 : prev / 2);
+    const newStart = Math.max(geneStart, center - newLength / 2);
+    const newEnd = Math.min(geneEnd, center + newLength / 2);
+    
+    // Ensure valid range
+    if (newStart < newEnd) {
+      setViewStart(newStart);
+      setViewEnd(newEnd);
+      setZoomLevel(prev => direction === 'in' ? prev * 2 : prev / 2);
+    }
   };
 
   const handleReset = () => {
-    setViewStart(gene.startPosition);
-    setViewEnd(gene.endPosition);
+    const start = gene.startPosition || 0;
+    const end = gene.endPosition || start + 100000;
+    
+    setViewStart(start);
+    setViewEnd(end);
     setZoomLevel(1);
   };
 
@@ -249,23 +290,45 @@ export function GeneBrowser({ gene, width = 800, height = 300 }: GeneBrowserProp
     const svg = svgRef.current;
     if (!svg) return;
 
-    const serializer = new XMLSerializer();
-    const svgString = serializer.serializeToString(svg);
-    const blob = new Blob([svgString], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${gene.symbol}_browser.svg`;
-    link.click();
-    
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: 'Export completed',
-      description: 'Gene browser view has been exported as SVG',
-    });
+    try {
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svg);
+      const blob = new Blob([svgString], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${gene.symbol}_browser.svg`;
+      link.click();
+      
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: 'Export completed',
+        description: 'Gene browser view has been exported as SVG',
+      });
+    } catch (error) {
+      toast({
+        title: 'Export failed',
+        description: 'Failed to export gene browser view',
+        variant: 'destructive',
+      });
+    }
   };
+
+  // FIX 6: Don't render if invalid gene data
+  if (!gene || !gene.symbol || viewStart === viewEnd) {
+    return (
+      <Card className="w-full">
+        <CardContent className="p-6">
+          <div className="text-center text-muted-foreground">
+            <Info className="h-8 w-8 mx-auto mb-2" />
+            <p>Invalid gene data for browser visualization</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full">
