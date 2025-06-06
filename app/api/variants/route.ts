@@ -31,7 +31,7 @@ async function getVariantsHandler(request: NextRequest) {
     // Execute business logic with optimization + caching
     const result = await variantService.searchVariants(searchParams, requestId);
 
-    // Format response - già serializzato dai repository ottimizzati
+    // Format response
     const response = NextResponse.json({
       status: 'success',
       data: result.data,
