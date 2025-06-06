@@ -1,5 +1,6 @@
 // lib/vcf-parser.ts
 import { z } from 'zod';
+import { CLINICAL_SIGNIFICANCE, VARIANT_IMPACT } from '@/types/genomics';
 
 // VCF Record Schema
 const VCFRecordSchema = z.object({
@@ -221,6 +222,9 @@ export class VCFParser {
 
   // Convert VCF record to database format
   static convertToVariantData(record: VCFRecord, geneId?: string) {
+    const consequence = this.extractConsequence(record.info);
+    const impact = this.extractImpact(record.info);
+    
     return {
       variantId: record.id || `${record.chromosome}_${record.position}_${record.reference}_${record.alternate}`,
       geneId: geneId || '', // To be resolved during import
@@ -229,6 +233,10 @@ export class VCFParser {
       referenceAllele: record.reference,
       alternateAllele: record.alternate,
       variantType: this.determineVariantType(record.reference, record.alternate),
+      consequence,
+      impact,
+      proteinChange: this.extractProteinChange(record.info),
+      transcriptId: this.extractTranscriptId(record.info),
       frequency: this.extractFrequency(record.info),
       clinicalSignificance: this.extractClinicalSignificance(record.info),
       metadata: {
@@ -237,7 +245,8 @@ export class VCFParser {
           filter: record.filter,
           info: record.info,
           samples: record.samples
-        }
+        },
+        annotations: this.extractAnnotations(record.info)
       }
     };
   }
@@ -269,9 +278,135 @@ export class VCFParser {
     
     // ClinVar clinical significance
     if (info.CLNSIG) {
-      return info.CLNSIG;
+      const clnsig = info.CLNSIG.toString().toLowerCase();
+      
+      // Map common ClinVar values to standardized values
+      if (clnsig.includes('pathogenic') && !clnsig.includes('likely')) {
+        return CLINICAL_SIGNIFICANCE.PATHOGENIC;
+      }
+      if (clnsig.includes('likely_pathogenic') || clnsig.includes('likely pathogenic')) {
+        return CLINICAL_SIGNIFICANCE.LIKELY_PATHOGENIC;
+      }
+      if (clnsig.includes('uncertain') || clnsig.includes('vus')) {
+        return CLINICAL_SIGNIFICANCE.UNCERTAIN_SIGNIFICANCE;
+      }
+      if (clnsig.includes('likely_benign') || clnsig.includes('likely benign')) {
+        return CLINICAL_SIGNIFICANCE.LIKELY_BENIGN;
+      }
+      if (clnsig.includes('benign') && !clnsig.includes('likely')) {
+        return CLINICAL_SIGNIFICANCE.BENIGN;
+      }
+      
+      return info.CLNSIG; // Return original if no mapping found
     }
     
     return undefined;
+  }
+
+  private static extractConsequence(info?: Record<string, any>): string | undefined {
+    if (!info) return undefined;
+    
+    // VEP CSQ field format
+    if (info.CSQ) {
+      const csq = info.CSQ.toString().split('|');
+      return csq[0]; // First field is usually the consequence
+    }
+    
+    // SnpEff ANN field
+    if (info.ANN) {
+      const ann = info.ANN.toString().split('|');
+      return ann[1]; // Second field is annotation (consequence)
+    }
+    
+    return undefined;
+  }
+
+  private static extractImpact(info?: Record<string, any>): string | undefined {
+    if (!info) return undefined;
+    
+    // VEP CSQ field - impact is usually in the second field
+    if (info.CSQ) {
+      const csq = info.CSQ.toString().split('|');
+      if (csq[1] && Object.values(VARIANT_IMPACT).includes(csq[1] as any)) {
+        return csq[1];
+      }
+    }
+    
+    // SnpEff ANN field - impact is in the third field
+    if (info.ANN) {
+      const ann = info.ANN.toString().split('|');
+      if (ann[2] && Object.values(VARIANT_IMPACT).includes(ann[2] as any)) {
+        return ann[2];
+      }
+    }
+    
+    return undefined;
+  }
+
+  private static extractProteinChange(info?: Record<string, any>): string | undefined {
+    if (!info) return undefined;
+    
+    // HGVS protein notation
+    if (info.HGVSP) {
+      return info.HGVSP;
+    }
+    
+    // Legacy protein change fields
+    if (info.PROTEIN_CHANGE) {
+      return info.PROTEIN_CHANGE;
+    }
+    
+    // VEP CSQ field
+    if (info.CSQ) {
+      const csq = info.CSQ.toString().split('|');
+      // Look for protein change in common positions
+      for (const field of csq) {
+        if (field.startsWith('p.')) {
+          return field;
+        }
+      }
+    }
+    
+    return undefined;
+  }
+
+  private static extractTranscriptId(info?: Record<string, any>): string | undefined {
+    if (!info) return undefined;
+    
+    if (info.TRANSCRIPT_ID) {
+      return info.TRANSCRIPT_ID;
+    }
+    
+    // VEP CSQ field
+    if (info.CSQ) {
+      const csq = info.CSQ.toString().split('|');
+      // Transcript ID is commonly in position 6 in VEP output
+      if (csq[6] && csq[6].startsWith('ENST')) {
+        return csq[6];
+      }
+    }
+    
+    return undefined;
+  }
+
+  private static extractAnnotations(info?: Record<string, any>): Record<string, any> {
+    if (!info) return {};
+    
+    const annotations: Record<string, any> = {};
+    
+    // Common annotation fields
+    const annotationFields = [
+      'CADD_PHRED', 'SIFT_SCORE', 'POLYPHEN_SCORE',
+      'HGVS', 'GENE_SYMBOL', 'GENE_ID', 'CLNDN',
+      'COSMIC_ID', 'DBSNP_ID', 'GNOMAD_AF'
+    ];
+    
+    for (const field of annotationFields) {
+      if (info[field]) {
+        annotations[field] = info[field];
+      }
+    }
+    
+    return annotations;
   }
 }

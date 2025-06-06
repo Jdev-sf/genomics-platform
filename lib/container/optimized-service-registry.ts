@@ -4,8 +4,9 @@ import { GeneRepository } from '@/lib/repositories/gene-repository';
 import { VariantRepository } from '@/lib/repositories/variant-repository';
 import { OptimizedGeneRepository } from '@/lib/repositories/optimized-gene-repository';
 import { OptimizedVariantRepository } from '@/lib/repositories/optimized-variant-repository';
-import { CachedGeneRepository } from '@/lib/repositories/cached-gene-repository';
-import { CachedVariantRepository } from '@/lib/repositories/cached-variant-repository';
+import { OptimizedCachedGeneRepository } from '@/lib/repositories/cached-gene-repository';
+import { OptimizedCachedVariantRepository } from '@/lib/repositories/cached-variant-repository';
+import { geneCache, variantCache } from '@/lib/cache/setup';
 import { GeneService } from '@/lib/services/gene-service';
 import { VariantService } from '@/lib/services/variant-service';
 import { QueryPerformanceMonitor } from '@/lib/performance/query-monitor';
@@ -37,154 +38,9 @@ export const OPTIMIZED_SERVICE_NAMES = {
 
 export type OptimizedServiceName = typeof OPTIMIZED_SERVICE_NAMES[keyof typeof OPTIMIZED_SERVICE_NAMES];
 
-// Cached optimized repositories with proper typing
-class CachedOptimizedGeneRepository extends CachedGeneRepository {
-  private baseRepo: OptimizedGeneRepository;
-  
-  constructor() {
-    super();
-    this.baseRepo = new OptimizedGeneRepository();
-  }
+// Repository implementations now use optimized cached versions directly
 
-  // Override with proper typing
-  override async findManyWithStats(
-    where?: GeneWhereInput,
-    pagination: PaginationParams = { page: 1, limit: 20 },
-    requestId?: string
-  ): Promise<PaginationResult<GeneWithStats>> {
-    const cacheKey = `gene:withStats:optimized:${JSON.stringify({ where, pagination })}`;
-    
-    try {
-      const cached = await this.getCachedResult(cacheKey);
-      if (cached) return cached as PaginationResult<GeneWithStats>;
-
-      const result = await this.baseRepo.findManyWithStats(where, pagination, requestId);
-      await this.setCachedResult(cacheKey, result);
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in optimized findManyWithStats', error instanceof Error ? error : new Error(String(error)));
-      return this.baseRepo.findManyWithStats(where, pagination, requestId);
-    }
-  }
-
-  async getGeneStatistics(requestId?: string) {
-    const cacheKey = 'gene:statistics:optimized';
-    
-    try {
-      const cached = await this.getCachedResult(cacheKey, 300); // 5 minutes TTL
-      if (cached) return cached;
-
-      const result = await this.baseRepo.getGeneStatistics(requestId);
-      await this.setCachedResult(cacheKey, result, 300);
-      return result;
-    } catch (error) {
-      return this.baseRepo.getGeneStatistics(requestId);
-    }
-  }
-
-  async getTopPathogenicGenes(limit: number = 10, requestId?: string) {
-    const cacheKey = `gene:topPathogenic:${limit}`;
-    
-    try {
-      const cached = await this.getCachedResult(cacheKey, 600); // 10 minutes TTL
-      if (cached) return cached;
-
-      const result = await this.baseRepo.getTopPathogenicGenes(limit, requestId);
-      await this.setCachedResult(cacheKey, result, 600);
-      return result;
-    } catch (error) {
-      return this.baseRepo.getTopPathogenicGenes(limit, requestId);
-    }
-  }
-
-  // Helper methods for caching
-  private async getCachedResult(key: string, ttl?: number) {
-    const { geneCache, CACHE_TTL } = await import('@/lib/cache/setup');
-    const cached = await geneCache.get(key, { ttl: ttl || CACHE_TTL.GENE_LIST });
-    return cached?.data;
-  }
-
-  private async setCachedResult(key: string, data: any, ttl?: number) {
-    const { geneCache, CACHE_TTL } = await import('@/lib/cache/setup');
-    await geneCache.set(key, data, { ttl: ttl || CACHE_TTL.GENE_LIST });
-  }
-}
-
-class CachedOptimizedVariantRepository extends CachedVariantRepository {
-  private baseRepo: OptimizedVariantRepository;
-  
-  constructor() {
-    super();
-    this.baseRepo = new OptimizedVariantRepository();
-  }
-
-  // Override with proper typing
-  override async findManyWithGene(
-    where?: VariantWhereInput,
-    pagination: PaginationParams = { page: 1, limit: 20 },
-    requestId?: string
-  ): Promise<PaginationResult<VariantWithGene>> {
-    const cacheKey = `variant:withGene:optimized:${JSON.stringify({ where, pagination })}`;
-    
-    try {
-      const cached = await this.getCachedResult(cacheKey);
-      if (cached) return cached as PaginationResult<VariantWithGene>;
-
-      const result = await this.baseRepo.findManyWithGene(where, pagination, requestId);
-      await this.setCachedResult(cacheKey, result);
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in optimized findManyWithGene', error instanceof Error ? error : new Error(String(error)));
-      return this.baseRepo.findManyWithGene(where, pagination, requestId);
-    }
-  }
-
-  async findByGenomicRegion(
-    region: any,
-    filters?: any,
-    pagination: PaginationParams = { page: 1, limit: 50 },
-    requestId?: string
-  ) {
-    const cacheKey = `variant:genomicRegion:${JSON.stringify({ region, filters, pagination })}`;
-    
-    try {
-      const cached = await this.getCachedResult(cacheKey);
-      if (cached) return cached;
-
-      const result = await this.baseRepo.findByGenomicRegion(region, filters, pagination, requestId);
-      await this.setCachedResult(cacheKey, result);
-      return result;
-    } catch (error) {
-      return this.baseRepo.findByGenomicRegion(region, filters, pagination, requestId);
-    }
-  }
-
-  async getClinicalStatistics(geneId?: string, requestId?: string) {
-    const cacheKey = `variant:clinicalStats:${geneId || 'global'}`;
-    
-    try {
-      const cached = await this.getCachedResult(cacheKey, 600); // 10 minutes TTL
-      if (cached) return cached;
-
-      const result = await this.baseRepo.getClinicalStatistics(geneId, requestId);
-      await this.setCachedResult(cacheKey, result, 600);
-      return result;
-    } catch (error) {
-      return this.baseRepo.getClinicalStatistics(geneId, requestId);
-    }
-  }
-
-  private async getCachedResult(key: string, ttl?: number) {
-    const { variantCache, CACHE_TTL } = await import('@/lib/cache/setup');
-    const cached = await variantCache.get(key, { ttl: ttl || CACHE_TTL.VARIANT_LIST });
-    return cached?.data;
-  }
-
-  private async setCachedResult(key: string, data: any, ttl?: number) {
-    const { variantCache, CACHE_TTL } = await import('@/lib/cache/setup');
-    await variantCache.set(key, data, { ttl: ttl || CACHE_TTL.VARIANT_LIST });
-  }
-}
+// Cleaned up - using direct optimized cached implementations
 
 /**
  * Register optimized services with performance monitoring
@@ -218,9 +74,15 @@ export function registerOptimizedServices(container: Container): void {
       
     case 'full':
     default:
-      // Full optimization: optimized + cached
-      container.singleton(OPTIMIZED_SERVICE_NAMES.CACHED_GENE_REPOSITORY, () => new CachedOptimizedGeneRepository());
-      container.singleton(OPTIMIZED_SERVICE_NAMES.CACHED_VARIANT_REPOSITORY, () => new CachedOptimizedVariantRepository());
+      // Full optimization: optimized + cached with new implementation
+      container.singleton(OPTIMIZED_SERVICE_NAMES.CACHED_GENE_REPOSITORY, async () => {
+        const cache = await geneCache;
+        return new OptimizedCachedGeneRepository(cache);
+      });
+      container.singleton(OPTIMIZED_SERVICE_NAMES.CACHED_VARIANT_REPOSITORY, async () => {
+        const cache = await variantCache;
+        return new OptimizedCachedVariantRepository(cache);
+      });
       break;
   }
 
@@ -245,7 +107,7 @@ async function getOptimalGeneRepository(container: Container, level: string) {
       return container.resolve<OptimizedGeneRepository>(OPTIMIZED_SERVICE_NAMES.OPTIMIZED_GENE_REPOSITORY);
     case 'full':
     default:
-      return container.resolve<CachedOptimizedGeneRepository>(OPTIMIZED_SERVICE_NAMES.CACHED_GENE_REPOSITORY);
+      return container.resolve<OptimizedCachedGeneRepository>(OPTIMIZED_SERVICE_NAMES.CACHED_GENE_REPOSITORY);
   }
 }
 
@@ -257,7 +119,7 @@ async function getOptimalVariantRepository(container: Container, level: string) 
       return container.resolve<OptimizedVariantRepository>(OPTIMIZED_SERVICE_NAMES.OPTIMIZED_VARIANT_REPOSITORY);
     case 'full':
     default:
-      return container.resolve<CachedOptimizedVariantRepository>(OPTIMIZED_SERVICE_NAMES.CACHED_VARIANT_REPOSITORY);
+      return container.resolve<OptimizedCachedVariantRepository>(OPTIMIZED_SERVICE_NAMES.CACHED_VARIANT_REPOSITORY);
   }
 }
 

@@ -4,17 +4,11 @@ import { BaseService } from './base-service';
 import { GeneRepository, GeneCreateInput, GeneUpdateInput, GeneWhereInput, GeneWithStats } from '@/lib/repositories/gene-repository';
 import { PaginationParams, PaginationResult } from '@/lib/repositories/base-repository';
 import { NotFoundError } from '@/lib/errors';
+import { GenomicsValidation } from '@/lib/shared/genomics-validation';
+import { SearchParameterMapper, GeneSearchParams } from '@/lib/shared/search-parameter-mapper';
+import { BulkOperationProcessor, BulkOperationResult } from '@/lib/shared/bulk-operations';
 
-export interface GeneSearchParams {
-  search?: string;
-  chromosome?: string;
-  biotype?: string;
-  hasVariants?: boolean;
-  page?: number;
-  limit?: number;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-}
+// Interface moved to shared module
 
 export interface GeneDetailResult {
   gene: any;
@@ -105,13 +99,9 @@ export class GeneService extends BaseService {
   }
 
   async searchGenes(params: GeneSearchParams, requestId?: string): Promise<PaginationResult<GeneWithStats>> {
-    const pagination: PaginationParams = {
-      page: params.page || 1,
-      limit: params.limit || 20,
-      sortBy: params.sortBy || 'symbol',
-      sortOrder: params.sortOrder || 'asc'
-    };
-
+    const pagination = SearchParameterMapper.toPaginationParams(params);
+    pagination.sortBy = params.sortBy || 'symbol';
+    
     const where: GeneWhereInput = {
       search: params.search,
       chromosome: params.chromosome,
@@ -171,27 +161,33 @@ export class GeneService extends BaseService {
     return result.data;
   }
 
-  async bulkCreateGenes(genes: GeneCreateInput[], requestId?: string): Promise<{ created: number; errors: Array<{ gene: GeneCreateInput; error: string }> }> {
+  async bulkCreateGenes(genes: GeneCreateInput[], requestId?: string): Promise<BulkOperationResult<GeneCreateInput>> {
     return this.executeWithErrorHandling(
       async () => {
-        const results = {
-          created: 0,
-          errors: [] as Array<{ gene: GeneCreateInput; error: string }>
-        };
-
-        for (const geneData of genes) {
-          try {
-            await this.geneRepository.create(geneData, requestId);
-            results.created++;
-          } catch (error) {
-            results.errors.push({
-              gene: geneData,
-              error: error instanceof Error ? error.message : String(error)
+        return BulkOperationProcessor.processBulkOperation(
+          genes,
+          async (geneData: GeneCreateInput, index: number) => {
+            // Validate gene data
+            const validation = GenomicsValidation.validateGeneData({
+              symbol: geneData.symbol,
+              name: geneData.name,
+              chromosome: geneData.chromosome,
+              startPosition: geneData.startPosition,
+              endPosition: geneData.endPosition
             });
+            
+            if (!validation.valid) {
+              throw new Error(validation.errors.join(', '));
+            }
+            
+            return this.geneRepository.create(geneData, requestId);
+          },
+          {
+            batchSize: 50,
+            continueOnError: true,
+            maxConcurrency: 3
           }
-        }
-
-        return results;
+        );
       },
       'bulk create genes',
       { count: genes.length },
@@ -200,36 +196,12 @@ export class GeneService extends BaseService {
   }
 
   async validateGeneData(data: GeneCreateInput): Promise<{ valid: boolean; errors: string[] }> {
-    const errors: string[] = [];
-
-    // Basic validation
-    if (!data.symbol || data.symbol.trim().length === 0) {
-      errors.push('Gene symbol is required');
-    }
-
-    if (!data.name || data.name.trim().length === 0) {
-      errors.push('Gene name is required');
-    }
-
-    if (!data.chromosome || data.chromosome.trim().length === 0) {
-      errors.push('Chromosome is required');
-    }
-
-    // Chromosome validation
-    const validChromosomes = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 
-                             '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y', 'MT'];
-    if (data.chromosome && !validChromosomes.includes(data.chromosome.toUpperCase())) {
-      errors.push('Invalid chromosome');
-    }
-
-    // Position validation
-    if (data.startPosition && data.endPosition && data.startPosition >= data.endPosition) {
-      errors.push('Start position must be less than end position');
-    }
-
-    return {
-      valid: errors.length === 0,
-      errors
-    };
+    return GenomicsValidation.validateGeneData({
+      symbol: data.symbol,
+      name: data.name,
+      chromosome: data.chromosome,
+      startPosition: data.startPosition,
+      endPosition: data.endPosition
+    });
   }
 }

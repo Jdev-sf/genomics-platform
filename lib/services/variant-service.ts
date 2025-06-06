@@ -4,22 +4,11 @@ import { BaseService } from './base-service';
 import { VariantRepository, VariantCreateInput, VariantUpdateInput, VariantWhereInput, VariantWithGene } from '@/lib/repositories/variant-repository';
 import { PaginationParams, PaginationResult } from '@/lib/repositories/base-repository';
 import { NotFoundError } from '@/lib/errors';
+import { GenomicsValidation } from '@/lib/shared/genomics-validation';
+import { SearchParameterMapper, VariantSearchParams } from '@/lib/shared/search-parameter-mapper';
+import { BulkOperationProcessor, BulkOperationResult } from '@/lib/shared/bulk-operations';
 
-export interface VariantSearchParams {
-  search?: string;
-  geneId?: string;
-  chromosome?: string;
-  clinicalSignificance?: string[];
-  impact?: string[];
-  variantType?: string[];
-  minFrequency?: number;
-  maxFrequency?: number;
-  consequence?: string;
-  page?: number;
-  limit?: number;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-}
+// Interface moved to shared module
 
 export interface VariantDetailResult {
   variant: any;
@@ -104,12 +93,8 @@ export class VariantService extends BaseService {
   }
 
   async searchVariants(params: VariantSearchParams, requestId?: string): Promise<PaginationResult<VariantWithGene>> {
-    const pagination: PaginationParams = {
-      page: params.page || 1,
-      limit: params.limit || 20,
-      sortBy: params.sortBy || 'position',
-      sortOrder: params.sortOrder || 'asc'
-    };
+    const pagination = SearchParameterMapper.toPaginationParams(params);
+    pagination.sortBy = params.sortBy || 'position';
 
     const where: VariantWhereInput = {
       search: params.search,
@@ -197,9 +182,35 @@ export class VariantService extends BaseService {
     );
   }
 
-  async bulkCreateVariants(variants: VariantCreateInput[], requestId?: string): Promise<number> {
+  async bulkCreateVariants(variants: VariantCreateInput[], requestId?: string): Promise<BulkOperationResult<VariantCreateInput>> {
     return this.executeWithErrorHandling(
-      () => this.variantRepository.bulkCreate(variants, requestId),
+      async () => {
+        return BulkOperationProcessor.processBulkOperation(
+          variants,
+          async (variantData: VariantCreateInput, index: number) => {
+            // Validate variant data
+            const validation = GenomicsValidation.validateVariantData({
+              variantId: variantData.variantId,
+              chromosome: variantData.chromosome,
+              position: variantData.position,
+              referenceAllele: variantData.referenceAllele,
+              alternateAllele: variantData.alternateAllele,
+              frequency: variantData.frequency
+            });
+            
+            if (!validation.valid) {
+              throw new Error(validation.errors.join(', '));
+            }
+            
+            return this.variantRepository.create(variantData, requestId);
+          },
+          {
+            batchSize: 50,
+            continueOnError: true,
+            maxConcurrency: 3
+          }
+        );
+      },
       'bulk create variants',
       { count: variants.length },
       requestId
@@ -207,60 +218,14 @@ export class VariantService extends BaseService {
   }
 
   async validateVariantData(data: VariantCreateInput): Promise<{ valid: boolean; errors: string[] }> {
-    const errors: string[] = [];
-
-    // Basic validation
-    if (!data.variantId || data.variantId.trim().length === 0) {
-      errors.push('Variant ID is required');
-    }
-
-    if (!data.geneId || data.geneId.trim().length === 0) {
-      errors.push('Gene ID is required');
-    }
-
-    if (!data.chromosome || data.chromosome.trim().length === 0) {
-      errors.push('Chromosome is required');
-    }
-
-    if (!data.referenceAllele || data.referenceAllele.trim().length === 0) {
-      errors.push('Reference allele is required');
-    }
-
-    if (!data.alternateAllele || data.alternateAllele.trim().length === 0) {
-      errors.push('Alternate allele is required');
-    }
-
-    // Chromosome validation
-    const validChromosomes = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 
-                             '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y', 'MT'];
-    if (data.chromosome && !validChromosomes.includes(data.chromosome.toUpperCase())) {
-      errors.push('Invalid chromosome');
-    }
-
-    // Position validation
-    if (data.position <= 0) {
-      errors.push('Position must be a positive number');
-    }
-
-    // Allele validation (basic DNA sequence check)
-    const validBases = /^[ATCGN\-]+$/i;
-    if (data.referenceAllele && !validBases.test(data.referenceAllele)) {
-      errors.push('Reference allele contains invalid characters');
-    }
-
-    if (data.alternateAllele && !validBases.test(data.alternateAllele)) {
-      errors.push('Alternate allele contains invalid characters');
-    }
-
-    // Frequency validation
-    if (data.frequency !== undefined && (data.frequency < 0 || data.frequency > 1)) {
-      errors.push('Frequency must be between 0 and 1');
-    }
-
-    return {
-      valid: errors.length === 0,
-      errors
-    };
+    return GenomicsValidation.validateVariantData({
+      variantId: data.variantId,
+      chromosome: data.chromosome,
+      position: data.position,
+      referenceAllele: data.referenceAllele,
+      alternateAllele: data.alternateAllele,
+      frequency: data.frequency
+    });
   }
 
   async getClinicalSignificanceDistribution(requestId?: string): Promise<Record<string, number>> {

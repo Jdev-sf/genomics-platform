@@ -1,266 +1,301 @@
-// lib/repositories/cached-gene-repository.ts
+// lib/repositories/optimized-cached-gene-repository.ts
+// Optimized version combining caching and gene repository functionality
+
 import { Gene } from '@prisma/client';
-import { GeneRepository, GeneCreateInput, GeneUpdateInput, GeneWhereInput, GeneWithStats } from './gene-repository';
-import { geneCache, CACHE_KEYS, CACHE_TTL, CacheUtils } from '@/lib/cache/setup';
+import { AbstractCachedRepository } from './abstract-cached-repository';
+import { GeneCreateInput, GeneUpdateInput, GeneWhereInput, GeneWithStats } from './gene-repository';
 import { PaginationParams, PaginationResult } from './base-repository';
-import { createLogger } from '@/lib/logger';
+import { CacheManager } from '@/lib/cache/cache-manager';
+import { Cache, CacheConfigs } from '@/lib/decorators/cache-decorator';
+import { SearchParameterMapper } from '@/lib/shared/search-parameter-mapper';
 
-export class CachedGeneRepository extends GeneRepository {
-  protected logger = createLogger({ requestId: 'cached-gene-repo' });
-
-  override async findById(id: string, requestId?: string): ReturnType<GeneRepository['findById']> {
-    const cacheKey = CACHE_KEYS.GENE.DETAIL(id);
-    
-    try {
-      const cached = await geneCache.get(cacheKey, { ttl: CACHE_TTL.GENE_DETAIL });
-      if (cached) {
-        this.logger.debug('Cache hit', { method: 'findById', key: cacheKey });
-        return cached.data as Gene | null;
-      }
-
-      const result = await super.findById(id, requestId);
-      
-      if (result) {
-        await geneCache.set(cacheKey, result, { ttl: CACHE_TTL.GENE_DETAIL });
-        this.logger.debug('Cache set', { method: 'findById', key: cacheKey });
-      }
-      
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in findById', error instanceof Error ? error : new Error(String(error)));
-      return super.findById(id, requestId);
-    }
+export class OptimizedCachedGeneRepository extends AbstractCachedRepository<
+  Gene,
+  GeneCreateInput,
+  GeneUpdateInput,
+  GeneWhereInput
+> {
+  constructor(cache: CacheManager) {
+    super('genes', cache, {
+      cachePrefix: 'gene',
+      defaultTtl: 3600,
+      enableCaching: true
+    });
   }
 
-  override async findBySymbol(symbol: string, requestId?: string): ReturnType<GeneRepository['findBySymbol']> {
-    const cacheKey = `gene:symbol:${symbol}`;
-    
-    try {
-      const cached = await geneCache.get(cacheKey, { ttl: CACHE_TTL.GENE_DETAIL });
-      if (cached) {
-        return cached.data as Gene | null;
-      }
-
-      const result = await super.findBySymbol(symbol, requestId);
-      
-      if (result) {
-        await geneCache.set(cacheKey, result, { ttl: CACHE_TTL.GENE_DETAIL });
-      }
-      
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in findBySymbol', error instanceof Error ? error : new Error(String(error)));
-      return super.findBySymbol(symbol, requestId);
-    }
+  // Implement abstract methods
+  
+  getEntityCacheKey(entity: Gene): string {
+    return `${this.cachePrefix}:id:${entity.id}`;
   }
 
-  override async findByGeneId(geneId: string, requestId?: string): ReturnType<GeneRepository['findByGeneId']> {
-    const cacheKey = `gene:geneId:${geneId}`;
-    
-    try {
-      const cached = await geneCache.get(cacheKey, { ttl: CACHE_TTL.GENE_DETAIL });
-      if (cached) {
-        return cached.data as Gene | null;
-      }
-
-      const result = await super.findByGeneId(geneId, requestId);
-      
-      if (result) {
-        await geneCache.set(cacheKey, result, { ttl: CACHE_TTL.GENE_DETAIL });
-      }
-      
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in findByGeneId', error instanceof Error ? error : new Error(String(error)));
-      return super.findByGeneId(geneId, requestId);
-    }
+  getSearchCacheKey(where: GeneWhereInput, pagination: PaginationParams): string {
+    return `${this.cachePrefix}:search:${JSON.stringify({ where, pagination })}`;
   }
 
-  override async findMany(
-    where?: GeneWhereInput,
-    pagination: PaginationParams = { page: 1, limit: 20 },
-    requestId?: string
-  ): ReturnType<GeneRepository['findMany']> {
-    const params = { where, pagination };
-    const cacheKey = CACHE_KEYS.GENE.LIST(JSON.stringify(params));
-    
-    try {
-      const cached = await geneCache.get(cacheKey, { ttl: CACHE_TTL.GENE_LIST });
-      if (cached) {
-        return cached.data as PaginationResult<Gene>;
-      }
-
-      const result = await super.findMany(where, pagination, requestId);
-      
-      await geneCache.set(cacheKey, result, { ttl: CACHE_TTL.GENE_LIST });
-      
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in findMany', error instanceof Error ? error : new Error(String(error)));
-      return super.findMany(where, pagination, requestId);
-    }
-  }
-
-  override async findManyWithStats(
-    where?: GeneWhereInput,
-    pagination: PaginationParams = { page: 1, limit: 20 },
-    requestId?: string
-  ): ReturnType<GeneRepository['findManyWithStats']> {
-    const params = { where, pagination };
-    const cacheKey = `gene:withStats:${CacheUtils.generateKey(params)}`;
-    
-    try {
-      const cached = await geneCache.get(cacheKey, { ttl: CACHE_TTL.GENE_LIST });
-      if (cached) {
-        return cached.data as PaginationResult<GeneWithStats>;
-      }
-
-      const result = await super.findManyWithStats(where, pagination, requestId);
-      
-      await geneCache.set(cacheKey, result, { ttl: CACHE_TTL.GENE_LIST });
-      
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in findManyWithStats', error instanceof Error ? error : new Error(String(error)));
-      return super.findManyWithStats(where, pagination, requestId);
-    }
-  }
-
-  override async findWithVariants(id: string, requestId?: string): ReturnType<GeneRepository['findWithVariants']> {
-    const cacheKey = `gene:withVariants:${id}`;
-    
-    try {
-      const cached = await geneCache.get(cacheKey, { ttl: CACHE_TTL.GENE_DETAIL });
-      if (cached) {
-        return cached.data as any;
-      }
-
-      const result = await super.findWithVariants(id, requestId);
-      
-      if (result) {
-        await geneCache.set(cacheKey, result, { ttl: CACHE_TTL.GENE_DETAIL });
-      }
-      
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in findWithVariants', error instanceof Error ? error : new Error(String(error)));
-      return super.findWithVariants(id, requestId);
-    }
-  }
-
-  override async getVariantStats(geneId: string, requestId?: string): ReturnType<GeneRepository['getVariantStats']> {
-    const cacheKey = CACHE_KEYS.GENE.STATS(geneId);
-    
-    try {
-      const cached = await geneCache.get(cacheKey, { ttl: CACHE_TTL.STATS });
-      if (cached) {
-        return cached.data as any;
-      }
-
-      const result = await super.getVariantStats(geneId, requestId);
-      
-      await geneCache.set(cacheKey, result, { ttl: CACHE_TTL.STATS });
-      
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in getVariantStats', error instanceof Error ? error : new Error(String(error)));
-      return super.getVariantStats(geneId, requestId);
-    }
-  }
-
-  override async searchByText(searchText: string, limit: number = 10, requestId?: string): ReturnType<GeneRepository['searchByText']> {
-    const cacheKey = CACHE_KEYS.GENE.SEARCH(`${searchText}:${limit}`);
-    
-    try {
-      const cached = await geneCache.get(cacheKey, { ttl: CACHE_TTL.SEARCH_RESULTS });
-      if (cached) {
-        return cached.data as Gene[];
-      }
-
-      const result = await super.searchByText(searchText, limit, requestId);
-      
-      await geneCache.set(cacheKey, result, { ttl: CACHE_TTL.SEARCH_RESULTS });
-      
-      return result;
-    } catch (error) {
-      this.logger.error('Cache error in searchByText', error instanceof Error ? error : new Error(String(error)));
-      return super.searchByText(searchText, limit, requestId);
-    }
-  }
-
-  // Write operations with cache invalidation
-  override async create(data: GeneCreateInput, requestId?: string): ReturnType<GeneRepository['create']> {
-    const result = await super.create(data, requestId);
-    
-    try {
-      await Promise.allSettled([
-        geneCache.invalidatePattern('gene:*'),
-        geneCache.invalidatePattern('search:*'),
-      ]);
-      this.logger.debug('Cache invalidated after create');
-    } catch (error) {
-      this.logger.error('Cache invalidation failed after create', error instanceof Error ? error : new Error(String(error)));
-    }
-    
-    return result;
-  }
-
-  override async update(id: string, data: GeneUpdateInput, requestId?: string): ReturnType<GeneRepository['update']> {
-    const result = await super.update(id, data, requestId);
-    
-    try {
-      await Promise.allSettled([
-        geneCache.del(CACHE_KEYS.GENE.DETAIL(id)),
-        geneCache.del(`gene:withVariants:${id}`),
-        geneCache.invalidatePattern('gene:list:*'),
-        geneCache.invalidatePattern('search:*'),
-      ]);
-      this.logger.debug('Cache invalidated after update');
-    } catch (error) {
-      this.logger.error('Cache invalidation failed after update', error instanceof Error ? error : new Error(String(error)));
-    }
-    
-    return result;
-  }
-
-  override async delete(id: string, requestId?: string): ReturnType<GeneRepository['delete']> {
-    const result = await super.delete(id, requestId);
-    
-    try {
-      await Promise.allSettled([
-        geneCache.del(CACHE_KEYS.GENE.DETAIL(id)),
-        geneCache.del(`gene:withVariants:${id}`),
-        geneCache.invalidatePattern('gene:list:*'),
-        geneCache.invalidatePattern('search:*'),
-      ]);
-      this.logger.debug('Cache invalidated after delete');
-    } catch (error) {
-      this.logger.error('Cache invalidation failed after delete', error instanceof Error ? error : new Error(String(error)));
-    }
-    
-    return result;
-  }
-
-  // Cache warming methods
-  async warmupPopularGenes(): Promise<void> {
-    const popularGenes = [
-      'BRCA1', 'BRCA2', 'TP53', 'EGFR', 'KRAS',
-      'PIK3CA', 'APC', 'PTEN', 'RB1', 'VHL'
-    ];
-
-    await Promise.allSettled(
-      popularGenes.map(symbol => this.findBySymbol(symbol))
+  // Enhanced methods with optimized caching
+  
+  @Cache({
+    ...CacheConfigs.GENE_DETAIL,
+    keyGenerator: (symbol: string) => `gene:symbol:${symbol}`
+  })
+  async findBySymbol(symbol: string, requestId?: string): Promise<Gene | null> {
+    return this.executeWithErrorHandling(
+      async () => {
+        const result = await this.prisma.gene.findFirst({
+          where: {
+            OR: [
+              { symbol: { equals: symbol, mode: 'insensitive' } },
+              { aliases: { some: { alias: { equals: symbol, mode: 'insensitive' } } } }
+            ]
+          }
+        });
+        return result;
+      },
+      'find gene by symbol',
+      { symbol },
+      requestId
     );
   }
 
-  async warmupCommonSearches(): Promise<void> {
-    const commonSearches = [
-      'BRCA', 'TP53', 'cancer', 'tumor',
-      'oncogene', 'suppressor'
-    ];
+  @Cache({
+    ...CacheConfigs.SEARCH_RESULTS,
+    keyGenerator: (where: GeneWhereInput, pagination: PaginationParams) => 
+      `gene:search:${JSON.stringify({ where, pagination })}`
+  })
+  async findManyWithStats(
+    where: GeneWhereInput = {},
+    pagination: PaginationParams = { page: 1, limit: 20 },
+    requestId?: string
+  ): Promise<PaginationResult<GeneWithStats>> {
+    return this.executeWithErrorHandling(
+      async () => {
+        const offset = (pagination.page - 1) * pagination.limit;
+        
+        // Build where clause using shared mapper
+        const searchConditions = where.search 
+          ? SearchParameterMapper.buildTextSearchConditions(where.search, ['symbol', 'name', 'description'])
+          : {};
+        
+        const whereClause = {
+          ...searchConditions,
+          ...(where.chromosome && { chromosome: where.chromosome }),
+          ...(where.biotype && { biotype: where.biotype }),
+          ...(where.hasVariants !== undefined && {
+            variants: where.hasVariants ? { some: {} } : { none: {} }
+          })
+        };
 
-    await Promise.allSettled(
-      commonSearches.map(search => this.searchByText(search, 5))
+        // Execute optimized query with aggregations
+        const [genes, total] = await Promise.all([
+          this.prisma.gene.findMany({
+            where: whereClause,
+            include: {
+              _count: {
+                select: {
+                  variants: true,
+                  aliases: true
+                }
+              }
+            },
+            orderBy: this.buildOrderBy(pagination.sortBy, pagination.sortOrder),
+            skip: offset,
+            take: pagination.limit
+          }),
+          this.prisma.gene.count({ where: whereClause })
+        ]);
+
+        // Transform to include stats
+        const genesWithStats: GeneWithStats[] = await Promise.all(
+          genes.map(async (gene) => {
+            const pathogenicCount = await this.prisma.variant.count({
+              where: {
+                geneId: gene.id,
+                clinicalSignificance: { in: ['Pathogenic', 'Likely pathogenic'] }
+              }
+            });
+
+            return {
+              ...gene,
+              variant_count: gene._count.variants,
+              pathogenic_count: pathogenicCount
+            } as GeneWithStats;
+          })
+        );
+
+        return this.createPaginationResult(genesWithStats, total, pagination);
+      },
+      'find genes with stats',
+      { where, pagination },
+      requestId
     );
+  }
+
+  @Cache({
+    ...CacheConfigs.GENE_DETAIL,
+    keyGenerator: (id: string) => `gene:variants:${id}`
+  })
+  async findWithVariants(id: string, requestId?: string): Promise<any> {
+    return this.executeWithErrorHandling(
+      async () => {
+        const gene = await this.prisma.gene.findUnique({
+          where: { id },
+          include: {
+            aliases: true,
+            variants: {
+              include: {
+                annotations: {
+                  include: {
+                    source: true
+                  }
+                },
+                _count: {
+                  select: { annotations: true }
+                }
+              },
+              orderBy: [
+                { clinicalSignificance: 'desc' },
+                { position: 'asc' }
+              ],
+              take: 50 // Limit variants for performance
+            },
+            _count: {
+              select: { variants: true }
+            }
+          }
+        });
+
+        return gene;
+      },
+      'find gene with variants',
+      { id },
+      requestId
+    );
+  }
+
+  @Cache({
+    ...CacheConfigs.STATISTICS,
+    keyGenerator: (geneId: string) => `gene:stats:${geneId}`
+  })
+  async getVariantStats(geneId: string, requestId?: string): Promise<any> {
+    return this.executeWithErrorHandling(
+      async () => {
+        const stats = await this.prisma.variant.groupBy({
+          by: ['clinicalSignificance'],
+          where: { geneId },
+          _count: { clinicalSignificance: true }
+        });
+
+        const result = {
+          total_variants: 0,
+          pathogenic: 0,
+          likely_pathogenic: 0,
+          uncertain_significance: 0,
+          likely_benign: 0,
+          benign: 0,
+          not_provided: 0
+        };
+
+        stats.forEach(stat => {
+          const count = stat._count.clinicalSignificance;
+          result.total_variants += count;
+
+          switch (stat.clinicalSignificance?.toLowerCase()) {
+            case 'pathogenic':
+              result.pathogenic = count;
+              break;
+            case 'likely pathogenic':
+            case 'likely_pathogenic':
+              result.likely_pathogenic = count;
+              break;
+            case 'uncertain significance':
+            case 'uncertain_significance':
+              result.uncertain_significance = count;
+              break;
+            case 'likely benign':
+            case 'likely_benign':
+              result.likely_benign = count;
+              break;
+            case 'benign':
+              result.benign = count;
+              break;
+            default:
+              result.not_provided = count;
+          }
+        });
+
+        return result;
+      },
+      'get variant statistics',
+      { geneId },
+      requestId
+    );
+  }
+
+  // Quick search with caching
+  @Cache({
+    ...CacheConfigs.SHORT,
+    keyGenerator: (searchText: string, limit: number) => `gene:quick:${searchText}:${limit}`
+  })
+  async searchByText(searchText: string, limit: number = 10, requestId?: string): Promise<Gene[]> {
+    return this.executeWithErrorHandling(
+      async () => {
+        const searchConditions = SearchParameterMapper.buildTextSearchConditions(
+          searchText,
+          ['symbol', 'name', 'description']
+        );
+
+        const genes = await this.prisma.gene.findMany({
+          where: searchConditions,
+          orderBy: [
+            { symbol: 'asc' },
+            { name: 'asc' }
+          ],
+          take: limit
+        });
+
+        return genes;
+      },
+      'quick search genes',
+      { searchText, limit },
+      requestId
+    );
+  }
+
+  // Override cache invalidation for gene-specific patterns
+  
+  protected async invalidateCreateRelatedCache(entity: Gene): Promise<void> {
+    await super.invalidateCreateRelatedCache(entity);
+    
+    // Invalidate symbol-based cache
+    await this.cache.del(`gene:symbol:${entity.symbol}`);
+    
+    // Invalidate chromosome-based caches
+    await this.cache.clear(`gene:search:*"chromosome":"${entity.chromosome}"*`);
+  }
+
+  protected async invalidateUpdateRelatedCache(id: string, entity: Gene): Promise<void> {
+    await super.invalidateUpdateRelatedCache(id, entity);
+    
+    // Invalidate symbol-based cache
+    await this.cache.del(`gene:symbol:${entity.symbol}`);
+    
+    // Invalidate variant-related caches
+    await this.cache.del(`gene:variants:${id}`);
+    await this.cache.del(`gene:stats:${id}`);
+  }
+
+  // Utility methods
+  
+  private buildOrderBy(sortBy?: string, sortOrder: 'asc' | 'desc' = 'asc'): any {
+    if (!sortBy) {
+      return { symbol: sortOrder };
+    }
+
+    if (sortBy === 'variantCount') {
+      return { variants: { _count: sortOrder } };
+    }
+
+    return { [sortBy]: sortOrder };
   }
 }

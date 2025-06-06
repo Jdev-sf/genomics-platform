@@ -1,0 +1,60 @@
+##fileformat=VCFv4.3
+##fileDate=20250106
+##source=GenomicsPlatform_v1.0
+##reference=file:///reference/GRCh38.fa
+##contig=<ID=1,length=248956422,assembly=GRCh38>
+##contig=<ID=2,length=242193529,assembly=GRCh38>
+##contig=<ID=3,length=198295559,assembly=GRCh38>
+##contig=<ID=4,length=190214555,assembly=GRCh38>
+##contig=<ID=5,length=181538259,assembly=GRCh38>
+##contig=<ID=6,length=170805979,assembly=GRCh38>
+##contig=<ID=7,length=159345973,assembly=GRCh38>
+##contig=<ID=8,length=145138636,assembly=GRCh38>
+##contig=<ID=9,length=138394717,assembly=GRCh38>
+##contig=<ID=10,length=133797422,assembly=GRCh38>
+##contig=<ID=11,length=135086622,assembly=GRCh38>
+##contig=<ID=12,length=133275309,assembly=GRCh38>
+##contig=<ID=13,length=114364328,assembly=GRCh38>
+##contig=<ID=14,length=107043718,assembly=GRCh38>
+##contig=<ID=15,length=101991189,assembly=GRCh38>
+##contig=<ID=16,length=90338345,assembly=GRCh38>
+##contig=<ID=17,length=83257441,assembly=GRCh38>
+##contig=<ID=18,length=80373285,assembly=GRCh38>
+##contig=<ID=19,length=58617616,assembly=GRCh38>
+##contig=<ID=20,length=64444167,assembly=GRCh38>
+##contig=<ID=21,length=46709983,assembly=GRCh38>
+##contig=<ID=22,length=50818468,assembly=GRCh38>
+##contig=<ID=X,length=156040895,assembly=GRCh38>
+##contig=<ID=Y,length=57227415,assembly=GRCh38>
+##contig=<ID=MT,length=16569,assembly=GRCh38>
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##INFO=<ID=AC,Number=A,Type=Integer,Description="Allele Count">
+##INFO=<ID=AN,Number=1,Type=Integer,Description="Total number of alleles in called genotypes">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth">
+##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of samples with data">
+##INFO=<ID=CLNSIG,Number=.,Type=String,Description="Clinical significance from ClinVar">
+##INFO=<ID=CLNDN,Number=.,Type=String,Description="ClinVar's preferred disease name for the concept specified by disease identifiers">
+##INFO=<ID=GENE_SYMBOL,Number=1,Type=String,Description="Gene symbol">
+##INFO=<ID=GENE_ID,Number=1,Type=String,Description="Gene identifier">
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP">
+##INFO=<ID=HGVS,Number=.,Type=String,Description="HGVS nomenclature">
+##INFO=<ID=CADD_PHRED,Number=1,Type=Float,Description="CADD PHRED score">
+##INFO=<ID=SIFT_SCORE,Number=1,Type=Float,Description="SIFT score">
+##INFO=<ID=POLYPHEN_SCORE,Number=1,Type=Float,Description="PolyPhen-2 score">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths for the ref and alt alleles">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+##FORMAT=<ID=PL,Number=G,Type=Integer,Description="Normalized, Phred-scaled likelihoods for genotypes">
+##FILTER=<ID=PASS,Description="All filters passed">
+##FILTER=<ID=q10,Description="Quality below 10">
+##FILTER=<ID=s50,Description="Less than 50% of samples have data">
+##FILTER=<ID=LowQual,Description="Low quality">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE001	SAMPLE002	SAMPLE003
+1	69270	rs201219564	A	G	59.13	PASS	AC=2;AF=0.333;AN=6;DP=283;NS=3;GENE_SYMBOL=OR4F5;GENE_ID=ENSG00000186092;CSQ=missense_variant|MODERATE|OR4F5;HGVS=c.208A>G;CADD_PHRED=15.2;SIFT_SCORE=0.12	GT:AD:DP:GQ:PL	0/1:48,25:73:99:255,0,999	0/1:52,31:83:99:255,0,999	0/0:127,0:127:99:0,381,5715
+1	866319	rs4951859	C	G	72.28	PASS	AC=1;AF=0.167;AN=6;DP=201;NS=3;GENE_SYMBOL=SAMD11;GENE_ID=ENSG00000187634;CSQ=synonymous_variant|LOW|SAMD11;HGVS=c.1464C>G;CADD_PHRED=8.9	GT:AD:DP:GQ:PL	0/0:78,0:78:99:0,234,3510	0/1:33,27:60:99:720,0,999	0/0:63,0:63:99:0,189,2835
+7	140753336	rs28933390	C	T	99.99	PASS	AC=1;AF=0.167;AN=6;DP=312;NS=3;GENE_SYMBOL=BRAF;GENE_ID=ENSG00000157764;CSQ=missense_variant|MODERATE|BRAF;HGVS=c.1799T>A;CLNSIG=Pathogenic;CLNDN=Cardiofaciocutaneous_syndrome;CADD_PHRED=34.0;SIFT_SCORE=0.00;POLYPHEN_SCORE=1.00	GT:AD:DP:GQ:PL	0/0:98,0:98:99:0,294,4410	0/1:55,48:103:99:1435,0,1687	0/0:111,0:111:99:0,333,4995
+13	32315474	rs11571833	T	G	37.77	PASS	AC=1;AF=0.167;AN=6;DP=198;NS=3;GENE_SYMBOL=BRCA2;GENE_ID=ENSG00000139618;CSQ=missense_variant|MODERATE|BRCA2;HGVS=c.2971A>C;CLNSIG=Uncertain_significance;CADD_PHRED=22.8;SIFT_SCORE=0.03;POLYPHEN_SCORE=0.89	GT:AD:DP:GQ:PL	0/0:73,0:73:99:0,219,3285	0/0:61,0:61:99:0,183,2745	0/1:38,26:64:77:845,0,1152
+17	43044295	rs80357713	A	T	45.77	PASS	AC=2;AF=0.333;AN=6;DP=164;NS=3;GENE_SYMBOL=BRCA1;GENE_ID=ENSG00000012048;CSQ=frameshift_variant|HIGH|BRCA1;HGVS=c.68_69delAG;CLNSIG=Pathogenic;CLNDN=Hereditary_breast_and_ovarian_cancer_syndrome;CADD_PHRED=35.0	GT:AD:DP:GQ:PL	0/1:29,26:55:99:831,0,872	0/0:54,0:54:99:0,162,2430	0/1:32,23:55:99:693,0,961
+22	21982892	rs7412	C	T	99.99	PASS	AC=1;AF=0.167;AN=6;DP=245;NS=3;GENE_SYMBOL=APOE;GENE_ID=ENSG00000130203;CSQ=missense_variant|MODERATE|APOE;HGVS=c.526C>T;CLNSIG=Benign;CADD_PHRED=15.1;SIFT_SCORE=0.45;POLYPHEN_SCORE=0.15	GT:AD:DP:GQ:PL	0/0:89,0:89:99:0,267,4005	0/1:51,44:95:99:1357,0,1532	0/0:61,0:61:99:0,183,2745
+X	32389644	rs5030858	G	A	65.28	PASS	AC=1;AF=0.167;AN=6;DP=187;NS=3;GENE_SYMBOL=DMD;GENE_ID=ENSG00000198947;CSQ=nonsense_variant|HIGH|DMD;HGVS=c.9563G>A;CLNSIG=Pathogenic;CLNDN=Duchenne_muscular_dystrophy;CADD_PHRED=38.0;SIFT_SCORE=0.00	GT:AD:DP:GQ:PL	0/0:67,0:67:99:0,201,3015	0/1:41,31:72:99:963,0,1233	0/0:48,0:48:99:0,144,2160

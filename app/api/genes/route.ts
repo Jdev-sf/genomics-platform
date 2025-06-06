@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
 import { getOptimizedGeneService } from '@/lib/container/optimized-service-registry';
 import { validateRequest, paginationSchema, addSecurityHeaders } from '@/lib/validation';
+import { SearchParameterMapper } from '@/lib/shared/search-parameter-mapper';
 import { withApiCache, ApiCachePresets } from '@/lib/middleware/cache-middleware';
 import { z } from 'zod';
 
@@ -14,32 +15,16 @@ const genesQuerySchema = paginationSchema.extend({
 });
 
 async function getGenesHandler(request: NextRequest) {
-  // Validation
-  const validation = await validateRequest(request, genesQuerySchema, 'query');
-  if (validation.error) {
-    return NextResponse.json(
-      { error: validation.error },
-      { status: validation.status || 400 }
-    );
-  }
-
-  const data = validation.data!;
   const requestId = request.headers.get('x-request-id') || undefined;
 
+  // Parse search parameters using shared mapper
+  const searchParams = SearchParameterMapper.parseGeneSearchParams(request.nextUrl.searchParams);
+  
   // Get OPTIMIZED service
   const geneService = await getOptimizedGeneService();
 
   // Execute business logic with optimization
-  const result = await geneService.searchGenes({
-    search: data.search,
-    chromosome: data.chromosome,
-    biotype: data.biotype,
-    hasVariants: data.hasVariants,
-    page: data.page,
-    limit: data.limit,
-    sortBy: data.sortBy,
-    sortOrder: data.sortOrder,
-  }, requestId);
+  const result = await geneService.searchGenes(searchParams, requestId);
 
   // Format response
   const response = NextResponse.json({

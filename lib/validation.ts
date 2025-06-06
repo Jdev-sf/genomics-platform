@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import DOMPurify from 'isomorphic-dompurify';
 import { NextRequest, NextResponse } from 'next/server';
+import { GenomicsValidation } from '@/lib/shared/genomics-validation';
 
 // Basic string sanitization
 function sanitizeString(val: string): string {
@@ -18,8 +19,11 @@ export const geneSymbol = z.string()
   .transform((val) => val.toUpperCase().trim());
 
 export const chromosome = z.string()
-  .regex(/^(chr)?(1[0-9]|2[0-2]|[1-9]|X|Y|MT?)$/i, 'Invalid chromosome')
-  .transform((val) => val.replace(/^chr/i, '').toUpperCase());
+  .refine((val) => {
+    const result = GenomicsValidation.validateChromosome(val);
+    return result.valid;
+  }, 'Invalid chromosome')
+  .transform((val) => GenomicsValidation.normalizeChromosome(val));
 
 export const genomicPosition = z.coerce.number()
   .int('Position must be an integer')

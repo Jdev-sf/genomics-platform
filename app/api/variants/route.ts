@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createApiMiddlewareChain, withMiddlewareChain } from '@/lib/middleware/presets';
 import { getOptimizedVariantService } from '@/lib/container/optimized-service-registry';
 import { validateRequest, paginationSchema, addSecurityHeaders } from '@/lib/validation';
+import { SearchParameterMapper } from '@/lib/shared/search-parameter-mapper';
 import { withApiCache, ApiCachePresets } from '@/lib/middleware/cache-middleware';
 import { z } from 'zod';
 
@@ -21,49 +22,14 @@ async function getVariantsHandler(request: NextRequest) {
   const requestId = request.headers.get('x-request-id') || undefined;
 
   try {
-    // Validation
-    const validation = await validateRequest(request, variantsQuerySchema, 'query');
-    if (validation.error) {
-      return NextResponse.json(
-        { error: validation.error },
-        { status: validation.status || 400 }
-      );
-    }
-
-    const data = validation.data!;
-
-    // Parse arrays and numbers from query params
-    const clinicalSignificance = data.clinicalSignificance 
-      ? data.clinicalSignificance.split(',') 
-      : undefined;
-    const impact = data.impact 
-      ? data.impact.split(',') 
-      : undefined;
-    const minFrequency = data.minFrequency 
-      ? parseFloat(data.minFrequency) 
-      : undefined;
-    const maxFrequency = data.maxFrequency 
-      ? parseFloat(data.maxFrequency) 
-      : undefined;
+    // Parse search parameters using shared mapper
+    const searchParams = SearchParameterMapper.parseVariantSearchParams(request.nextUrl.searchParams);
 
     // Get OPTIMIZED service
     const variantService = await getOptimizedVariantService();
 
     // Execute business logic with optimization + caching
-    const result = await variantService.searchVariants({
-      search: data.search,
-      geneId: data.geneId,
-      chromosome: data.chromosome,
-      clinicalSignificance,
-      impact,
-      minFrequency,
-      maxFrequency,
-      consequence: data.consequence,
-      page: data.page,
-      limit: data.limit,
-      sortBy: data.sortBy,
-      sortOrder: data.sortOrder,
-    }, requestId);
+    const result = await variantService.searchVariants(searchParams, requestId);
 
     // Format response - già serializzato dai repository ottimizzati
     const response = NextResponse.json({
