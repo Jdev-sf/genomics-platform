@@ -30,6 +30,7 @@ import { HelpSuggestions } from '@/components/contextual-help';
 import { useTheme } from '@/components/theme-provider';
 import { UserRoleIndicator } from '@/components/user-role-indicator';
 import { ModernHeader } from '@/components/layout/modern-header';
+import { HeaderSkeleton } from '@/components/layout/header-skeleton';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -134,9 +135,19 @@ export function MobileNavigation({ children }: MobileNavigationProps) {
     },
   ];
 
-  // Don't render navigation on auth pages or when session is loading
-  if (isAuthPage || status === 'loading') {
+  // Don't render navigation on auth pages
+  if (isAuthPage) {
     return <>{children}</>;
+  }
+
+  // Show skeleton while session is loading
+  if (status === 'loading') {
+    return (
+      <>
+        <HeaderSkeleton />
+        {children}
+      </>
+    );
   }
 
   // If no session, just render children (middleware will redirect)
